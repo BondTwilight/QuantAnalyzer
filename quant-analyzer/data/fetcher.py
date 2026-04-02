@@ -68,6 +68,9 @@ class DataFetcher:
             )
 
             rows = []
+            if df is None:
+                logger.warning(f"BaoStock返回None for {ts_code}")
+                return pd.DataFrame()
             while df.error_code == "0" and df.next():
                 rows.append(df.get_row_data())
 
@@ -136,6 +139,10 @@ class DataFetcher:
             bs.login()
             rs = bs.query_stock_basic()
             rows = []
+            if rs is None:
+                logger.warning("BaoStock返回None for stock list")
+                bs.logout()
+                return pd.DataFrame()
             while rs.error_code == "0" and rs.next():
                 rows.append(rs.get_row_data())
             bs.logout()
@@ -170,6 +177,9 @@ class DataFetcher:
                 frequency="d", adjustflag="2"
             )
             rows = []
+            if df is None:
+                logger.warning(f"BaoStock返回None for sector {sector_name}")
+                return pd.DataFrame()
             while df.error_code == "0" and df.next():
                 rows.append(df.get_row_data())
             if not rows:

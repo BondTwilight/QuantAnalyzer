@@ -1,5 +1,5 @@
 """
-QuantAnalyzer v2.0 — 专业量化策略分析平台
+QuantAnalyzer v3.0 — 专业量化策略分析平台
 基于全景指南全面升级：专业UI、K线图、市场看板、收益热力图、交易明细、风险仪表盘
 """
 import streamlit as st
@@ -301,11 +301,14 @@ def render_sidebar():
 
         # 导航
         pages = [
+            "🏠 首页",
+            "⚔️ 策略PK",
             "📊 策略总览",
+            "📚 策略库",
+            "🌐 平台对比",
+            "🧠 代码分析",
             "🏦 市场看板",
             "📉 K线分析",
-            "⚔️ 策略对比",
-            "📈 策略详情",
             "📋 交易明细",
             "🗓️ 收益日历",
             "🤖 AI 分析",
@@ -313,6 +316,11 @@ def render_sidebar():
             "⚙️ 系统设置",
         ]
         selected = st.radio("导航", pages, label_visibility="collapsed")
+
+        # 清除导航状态（防止session_state污染）
+        if "page_navigate" in st.session_state:
+            selected = st.session_state["page_navigate"]
+            del st.session_state["page_navigate"]
 
         st.markdown("---")
         # AI模型选择
@@ -329,18 +337,14 @@ def render_sidebar():
         st.markdown("---")
         # 快捷操作
         st.markdown('<div class="kpi-label" style="margin-bottom:8px;">⚡ 快捷操作</div>', unsafe_allow_html=True)
-        if st.button("🔄 运行全部回测", use_container_width=True, type="primary"):
-            with st.spinner("回测运行中..."):
-                try:
-                    from core.scheduler import run_once
-                    run_once()
-                    st.session_state.last_refresh = datetime.now().strftime("%H:%M:%S")
-                    st.success("✅ 回测完成!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"❌ 失败: {e}")
 
-        if st.button("📄 生成日报", use_container_width=True):
+        if st.button("⚔️ 去PK策略", use_container_width=True, type="primary"):
+            st.session_state["page_navigate"] = "⚔️ 策略PK"
+            st.rerun()
+
+        if st.button("📋 策略库", use_container_width=True):
+            st.session_state["page_navigate"] = "📚 策略库"
+            st.rerun()
             with st.spinner("生成中..."):
                 try:
                     from utils.report import generate_daily_report
@@ -360,6 +364,18 @@ def render_sidebar():
                     unsafe_allow_html=True)
 
     return selected
+
+
+# ═══════════════════════════════════════════
+# 页面0: 首页仪表盘
+# ═══════════════════════════════════════════
+def page_home():
+    from core.home_page import render_home_page, render_quick_backtest_result
+    # 如果有回测结果就显示结果页，否则显示首页
+    if st.session_state.get("page_navigate") == "🔬 回测结果" and st.session_state.get("home_backtest_code"):
+        render_quick_backtest_result()
+    else:
+        render_home_page()
 
 
 # ═══════════════════════════════════════════
@@ -551,8 +567,11 @@ def page_market():
             rs = bs.query_history_k_data_plus(code, "date,open,high,low,close,volume",
                 start_date=start_d, end_date=end_d, frequency="d", adjustflag="3")
             rows = []
-            while rs.error_code == "0" and rs.next():
-                rows.append(rs.get_row_data())
+            if rs is None:
+                st.warning(f"获取{name}数据失败，请检查网络或代码")
+            else:
+                while rs.error_code == "0" and rs.next():
+                    rows.append(rs.get_row_data())
             if rows:
                 df = pd.DataFrame(rows, columns=["date","open","high","low","close","volume"])
                 for c in ["open","high","low","close","volume"]:
@@ -685,6 +704,10 @@ def page_kline():
         rs = bs.query_history_k_data_plus(code, "date,open,high,low,close,volume,amount",
             start_date=start_d, end_date=end_d, frequency="d", adjustflag="2")
         rows = []
+        if rs is None:
+            st.error(f"获取K线数据失败，请检查股票代码或网络连接")
+            bs.logout()
+            return
         while rs.error_code == "0" and rs.next():
             rows.append(rs.get_row_data())
         bs.logout()
@@ -1209,8 +1232,11 @@ def page_ai():
                 rs = bs.query_history_k_data_plus(code, "date,close,volume",
                     start_date=start_d, end_date=end_d, frequency="d", adjustflag="3")
                 rows = []
-                while rs.error_code == "0" and rs.next():
-                    rows.append(rs.get_row_data())
+                if rs is None:
+                    st.warning(f"获取{code}指数数据失败")
+                else:
+                    while rs.error_code == "0" and rs.next():
+                        rows.append(rs.get_row_data())
                 if rows:
                     df = pd.DataFrame(rows, columns=["date", "close", "volume"])
                     df["close"] = pd.to_numeric(df["close"])
@@ -1451,17 +1477,74 @@ def page_settings():
         ''', unsafe_allow_html=True)
 
     with tab2:
-        st.markdown("### 上传自定义策略")
-        st.markdown('<div class="alert-box alert-info">支持上传 .py 策略文件（Backtrader格式）</div>', unsafe_allow_html=True)
-        uploaded = st.file_uploader("选择.py文件", type=["py"])
+        st.markdown("### 📤 上传自定义策略")
+        st.markdown('<div class="alert-box alert-info">支持上传 .py 策略文件（Backtrader格式），上传后直接回测！</div>', unsafe_allow_html=True)
+        uploaded = st.file_uploader("选择.py文件（支持拖拽）", type=["py"])
         if uploaded:
             code = uploaded.read().decode("utf-8")
-            st.code(code, language="python")
+            st.markdown(f"**📄 已上传:** `{uploaded.name}` （{len(code)} 字符）")
+            st.code(code[:500] + "..." if len(code) > 500 else code, language="python")
+
+            # 保存
             (ROOT_DIR / "uploads").mkdir(parents=True, exist_ok=True)
             save_path = ROOT_DIR / "uploads" / uploaded.name
             with open(save_path, "wb") as f:
                 f.write(uploaded.getvalue())
-            st.success(f"✅ 已保存: {save_path}")
+
+            # 自动检测策略
+            import re
+            bt_classes = re.findall(r"class\s+(\w+)\(bt\.Strategy\)", code)
+            bt_classes_also = re.findall(r"class\s+(\w+)\(bt\.\w+Strategy\)", code)
+            all_classes = list(set(bt_classes + bt_classes_also))
+
+            if all_classes:
+                st.markdown(f"**✅ 检测到 Backtrader 策略类:** `{', '.join(all_classes)}`")
+                st.success("策略格式正确，可以回测！")
+
+                # 立即回测
+                st.markdown("#### ⚡ 立即回测这个策略")
+                s_col, e_col = st.columns(2)
+                with s_col:
+                    up_stock = st.selectbox("回测标的", [
+                        "000001.SZ", "000002.SZ", "600000.SH", "600519.SH",
+                        "000858.SZ", "601318.SH", "000300.SH"
+                    ], key="up_stock", format_func=lambda x: f"{x} {'平安' if x=='601318.SH' else '茅台' if x=='600519.SH' else '沪深300' if x=='000300.SH' else '万科' if x=='000002.SZ' else '浦发' if x=='600000.SH' else '五粮液' if x=='000858.SZ' else '股票'}")
+                with e_col:
+                    up_start = st.date_input("开始", value=datetime(2023,1,1), key="up_start")
+                    up_end = st.date_input("结束", value=datetime(2024,12,31), key="up_end")
+
+                if st.button("🚀 **立即回测**", type="primary", use_container_width=True):
+                    with st.spinner("回测中，请稍候..."):
+                        try:
+                            from core.strategy_arena import safe_backtest_strategy
+                            success, results, equity_df = safe_backtest_strategy(
+                                code=code,
+                                stock=up_stock,
+                                start_date=up_start.strftime("%Y-%m-%d"),
+                                end_date=up_end.strftime("%Y-%m-%d"),
+                                initial_cash=100000.0,
+                            )
+                            if success:
+                                col1, col2, col3, col4 = st.columns(4)
+                                c = "#10b981" if results["total_return"] >= 0 else "#ef4444"
+                                with col1:
+                                    st.metric("累计收益", f"{results['total_return']:.2f}%", delta_color="normal" if results["total_return"] >= 0 else "inverse")
+                                with col2:
+                                    st.metric("夏普比率", f"{results['sharpe']:.2f}")
+                                with col3:
+                                    st.metric("最大回撤", f"-{results['max_drawdown']:.2f}%", delta_color="inverse")
+                                with col4:
+                                    st.metric("交易次数", results["total_trades"])
+                                st.success(f"✅ 回测成功！策略名: **{results['strategy_name']}** · 最终资金 ¥{results['final_value']:,.0f}")
+                            else:
+                                st.error(f"❌ 回测失败: {results.get('error','未知错误')}")
+                        except Exception as e:
+                            st.error(f"❌ 执行异常: {e}")
+            else:
+                st.warning("⚠️ 未检测到 Backtrader 策略类，请确认代码包含 `class XXX(bt.Strategy):`")
+                st.info("提示：支持 Backtrader / 聚宽 / AKShare 格式的策略代码")
+
+            st.markdown(f"✅ 已保存到: `{save_path.relative_to(ROOT_DIR)}`")
 
     with tab3:
         st.markdown("### 数据管理")
@@ -1755,12 +1838,36 @@ class MyStrategy(bt.Strategy):
 
 
 # ═══════════════════════════════════════════
+# ⚔️ 策略PK竞技场页面（核心新功能）
+# ═══════════════════════════════════════════
+def page_strategy_pk():
+    try:
+        from core.strategy_arena import render_strategy_pk_arena
+        render_strategy_pk_arena()
+    except ImportError as e:
+        import streamlit as st
+        st.error(f"策略PK模块加载失败: {e}")
+
+# 🌐 量化平台对比页面
+# ═══════════════════════════════════════════
+def page_platform_comparison():
+    try:
+        from core.platform_comparison import render_platform_comparison
+        render_platform_comparison()
+    except ImportError as e:
+        import streamlit as st
+        st.error(f"平台对比模块加载失败: {e}")
+
+# ═══════════════════════════════════════════
 # 主路由
 # ═══════════════════════════════════════════
 page = render_sidebar()
 page_map = {
+    "🏠 首页": page_home,
+    "⚔️ 策略PK": page_strategy_pk,
     "📊 策略总览": page_overview,
     "📚 策略库": page_library,
+    "🌐 平台对比": page_platform_comparison,
     "🧠 代码分析": page_code_analyzer,
     "🏦 市场看板": page_market,
     "📉 K线分析": page_kline,
