@@ -308,6 +308,7 @@ def render_sidebar():
             "🌐 平台对比",
             "🧠 代码分析",
             "🏦 市场看板",
+            "📈 专业分析",
             "📉 K线分析",
             "📋 交易明细",
             "🗓️ 收益日历",
@@ -705,6 +706,341 @@ def page_market():
         </div>
     </div>
     ''', unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════
+# 页面新: 专业分析 (聚宽教程增强)
+# ═══════════════════════════════════════════
+def page_analysis():
+    """专业分析页面 - 基于聚宽教程增强"""
+    st.title("📈 专业分析")
+    
+    tab1, tab2, tab3 = st.tabs(["📊 收益率分析", "📋 财务数据", "📈 风险指标"])
+    
+    # Tab 1: 收益率分析
+    with tab1:
+        st.markdown("### 🎯 股票/策略收益率分析")
+        
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            stock_code = st.text_input("股票代码", value="600519.SH", help="格式: 600519.SH 或 000001.SZ")
+            days = st.slider("回测天数", 30, 500, 120)
+            initial_capital = st.number_input("初始资金(元)", value=1000000.0, step=10000.0)
+        
+        with col2:
+            st.markdown("#### 📊 分析指标说明")
+            st.markdown("""
+            | 指标 | 说明 |
+            |------|------|
+            | **总收益率** | 持有期间的总收益百分比 |
+            | **年化收益率** | 折算为年度的收益率 |
+            | **最大回撤** | 历史最大亏损幅度 |
+            | **夏普比率** | 风险调整后的收益指标 |
+            """)
+        
+        if st.button("🔍 开始分析", type="primary", use_container_width=True):
+            with st.spinner("正在获取数据..."):
+                try:
+                    from data.joinquant import (
+                        calculate_returns, calculate_annual_return, 
+                        calculate_max_drawdown, calculate_sharpe_ratio,
+                        calculate_volatility, generate_strategy_report
+                    )
+                    
+                    # 获取数据
+                    import baostock as bs
+                    bs.login()
+                    
+                    # 转换代码格式
+                    code = stock_code
+                    if "." in code and not code.startswith("sh.") and not code.startswith("sz."):
+                        parts = code.split(".")
+                        code = f"{'sh' if parts[1]=='SH' else 'sz'}.{parts[0]}"
+                    
+                    end_d = datetime.now().strftime("%Y%m%d")
+                    start_d = (datetime.now() - timedelta(days=days * 2)).strftime("%Y%m%d")
+                    
+                    rs = bs.query_history_k_data_plus(
+                        code, "date,open,high,low,close,volume",
+                        start_date=start_d, end_date=end_d, frequency="d", adjustflag="2"
+                    )
+                    rows = []
+                    while rs.error_code == "0" and rs.next():
+                        rows.append(rs.get_row_data())
+                    bs.logout()
+                    
+                    if not rows:
+                        st.error("获取数据失败")
+                    else:
+                        df = pd.DataFrame(rows, columns=["date","open","high","low","close","volume"])
+                        for c in ["open","high","low","close","volume"]:
+                            df[c] = pd.to_numeric(df[c], errors="coerce")
+                        df["date"] = pd.to_datetime(df["date"])
+                        df = df.tail(days).reset_index(drop=True)
+                        
+                        # 生成分析报告
+                        report = generate_strategy_report(df, initial_capital=initial_capital)
+                        
+                        # 显示KPI卡片
+                        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+                        
+                        with kpi_col1:
+                            st.markdown(f'''
+                            <div class="kpi-card {'green' if report['total_return'] > 0 else 'red'}">
+                                <div class="kpi-label">总收益率</div>
+                                <div class="kpi-value">{report['total_return']:.2%}</div>
+                            </div>
+                            ''', unsafe_allow_html=True)
+                        
+                        with kpi_col2:
+                            st.markdown(f'''
+                            <div class="kpi-card blue">
+                                <div class="kpi-label">年化收益率</div>
+                                <div class="kpi-value">{report['annual_return']:.2%}</div>
+                            </div>
+                            ''', unsafe_allow_html=True)
+                        
+                        with kpi_col3:
+                            st.markdown(f'''
+                            <div class="kpi-card {'red' if report['max_drawdown'] < 0 else 'green'}">
+                                <div class="kpi-label">最大回撤</div>
+                                <div class="kpi-value">{report['max_drawdown']:.2%}</div>
+                            </div>
+                            ''', unsafe_allow_html=True)
+                        
+                        with kpi_col4:
+                            st.markdown(f'''
+                            <div class="kpi-card purple">
+                                <div class="kpi-label">夏普比率</div>
+                                <div class="kpi-value">{report['sharpe_ratio']:.2f}</div>
+                            </div>
+                            ''', unsafe_allow_html=True)
+                        
+                        # 详细报告
+                        st.markdown("---")
+                        st.markdown("#### 📋 详细分析报告")
+                        
+                        report_col1, report_col2 = st.columns(2)
+                        with report_col1:
+                            st.markdown(f"""
+                            **📈 收益分析**
+                            - 初始资金: ¥{report['initial_capital']:,.0f}
+                            - 最终资金: ¥{report['final_capital']:,.0f}
+                            - 净利润: ¥{report['profit']:,.0f}
+                            - 交易天数: {report['trading_days']}天 ({report['years']:.2f}年)
+                            """)
+                        
+                        with report_col2:
+                            st.markdown(f"""
+                            **📉 风险分析**
+                            - 年化波动率: {report['volatility']:.2%}
+                            - 最大回撤日期: {report['max_drawdown_low']}
+                            - 夏普比率: {report['sharpe_ratio']:.2f}
+                            - Beta系数: {report['beta']:.2f}
+                            """)
+                        
+                        # 收益率图表
+                        st.markdown("---")
+                        st.markdown("#### 📊 收益率曲线")
+                        
+                        df['cumulative_return'] = (1 + df['close'].pct_change().fillna(0)).cumprod() - 1
+                        
+                        import plotly.express as px
+                        fig = px.line(
+                            df, x='date', y='cumulative_return',
+                            title=f'{stock_code} 累计收益率',
+                            labels={'cumulative_return': '累计收益率', 'date': '日期'}
+                        )
+                        fig.update_layout(
+                            template="plotly_dark",
+                            xaxis_rangeslider_visible=True,
+                            height=400
+                        )
+                        fig.update_yaxes(tickformat='.2%')
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                except Exception as e:
+                    st.error(f"分析失败: {e}")
+    
+    # Tab 2: 财务数据
+    with tab2:
+        st.markdown("### 📋 上市公司财务数据")
+        
+        jq_col1, jq_col2 = st.columns([1, 1])
+        with jq_col1:
+            jq_stock = st.text_input("股票代码", value="000001.SZ", key="jq_stock")
+            jq_report_type = st.selectbox(
+                "报告类型",
+                ["income", "balance", "cashflow"],
+                format_func=lambda x: {"income": "利润表", "balance": "资产负债表", "cashflow": "现金流量表"}[x]
+            )
+        
+        with jq_col2:
+            st.markdown("**💡 聚宽数据说明**")
+            st.markdown("""
+            聚宽提供高质量财务数据:
+            - 📊 **利润表**: 营收、净利润、毛利率
+            - 📄 **资产负债表**: 资产、负债、净资产
+            - 💰 **现金流量表**: 经营/投资/筹资现金流
+            """)
+        
+        if st.button("📥 获取财务数据", type="primary"):
+            with st.spinner("正在获取财务数据..."):
+                try:
+                    from data.joinquant import get_financial_report, get_valuation_metrics
+                    import os
+                    from dotenv import load_dotenv
+                    load_dotenv()
+                    
+                    # 尝试连接聚宽
+                    import jqdatasdk as jq
+                    
+                    username = os.getenv("JQ_USERNAME", "")
+                    password = os.getenv("JQ_PASSWORD", "")
+                    
+                    if username and password:
+                        jq.auth(username, password)
+                        st.success("✅ 聚宽已连接")
+                        
+                        # 获取财务报告
+                        finance_df = get_financial_report(jq_stock, jq_report_type, count=4)
+                        
+                        if finance_df is not None and not finance_df.empty:
+                            st.markdown(f"#### {jq_stock} {jq_report_type} 数据")
+                            st.dataframe(finance_df, use_container_width=True)
+                            
+                            # 下载按钮
+                            csv = finance_df.to_csv(index=False)
+                            st.download_button(
+                                "📥 下载CSV",
+                                csv,
+                                file_name=f"{jq_stock}_{jq_report_type}.csv",
+                                mime="text/csv"
+                            )
+                        else:
+                            st.info("暂无财务数据，请检查股票代码")
+                        
+                        # 获取估值指标
+                        st.markdown("---")
+                        st.markdown("#### 📊 估值指标")
+                        metrics = get_valuation_metrics(jq_stock)
+                        if metrics:
+                            metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+                            with metric_col1:
+                                st.metric("市盈率(PE)", f"{metrics.get('pe_ratio', 0):.2f}")
+                            with metric_col2:
+                                st.metric("市净率(PB)", f"{metrics.get('pb_ratio', 0):.2f}")
+                            with metric_col3:
+                                st.metric("市销率(PS)", f"{metrics.get('ps_ratio', 0):.2f}")
+                            with metric_col4:
+                                st.metric("总市值(亿)", f"{metrics.get('market_cap', 0)/1e8:.2f}")
+                        else:
+                            st.warning("无法获取估值指标")
+                        
+                        jq.logout()
+                    else:
+                        st.warning("请先在设置中配置聚宽账号 (JQ_USERNAME, JQ_PASSWORD)")
+                        
+                except ImportError:
+                    st.error("请先安装聚宽SDK: pip install jqdatasdk")
+                except Exception as e:
+                    st.error(f"获取财务数据失败: {e}")
+    
+    # Tab 3: 风险指标
+    with tab3:
+        st.markdown("### 📈 风险指标计算器")
+        
+        risk_col1, risk_col2 = st.columns([1, 1])
+        with risk_col1:
+            st.markdown("#### 🎯 个股风险分析")
+            risk_stock = st.text_input("股票代码", value="600519.SH", key="risk_stock")
+            risk_days = st.slider("分析周期(天)", 30, 500, 120)
+            
+            if st.button("📊 计算风险指标", type="primary"):
+                try:
+                    import baostock as bs
+                    bs.login()
+                    
+                    code = risk_stock
+                    if "." in code and not code.startswith("sh.") and not code.startswith("sz."):
+                        parts = code.split(".")
+                        code = f"{'sh' if parts[1]=='SH' else 'sz'}.{parts[0]}"
+                    
+                    end_d = datetime.now().strftime("%Y%m%d")
+                    start_d = (datetime.now() - timedelta(days=risk_days * 2)).strftime("%Y%m%d")
+                    
+                    rs = bs.query_history_k_data_plus(
+                        code, "date,close", start_date=start_d, end_date=end_d, frequency="d"
+                    )
+                    rows = []
+                    while rs.error_code == "0" and rs.next():
+                        rows.append(rs.get_row_data())
+                    bs.logout()
+                    
+                    if rows:
+                        df = pd.DataFrame(rows, columns=["date","close"])
+                        df["close"] = pd.to_numeric(df["close"], errors="coerce")
+                        df = df.tail(risk_days).reset_index(drop=True)
+                        
+                        from data.joinquant import calculate_returns, calculate_volatility, calculate_sharpe_ratio, calculate_max_drawdown
+                        
+                        returns = calculate_returns(df)
+                        volatility = calculate_volatility(returns)
+                        sharpe = calculate_sharpe_ratio(returns)
+                        max_dd, _, _ = calculate_max_drawdown(df)
+                        
+                        r_col1, r_col2, r_col3, r_col4 = st.columns(4)
+                        with r_col1:
+                            st.metric("年化波动率", f"{volatility:.2%}")
+                        with r_col2:
+                            st.metric("夏普比率", f"{sharpe:.2f}")
+                        with r_col3:
+                            st.metric("最大回撤", f"{max_dd:.2%}")
+                        with r_col4:
+                            daily_vol = returns.std()
+                            st.metric("日波动率", f"{daily_vol:.2%}")
+                        
+                        # 风险等级
+                        risk_score = abs(max_dd) * 0.4 + volatility * 0.3 + (1 - sharpe/3 if sharpe > 0 else 1) * 0.3
+                        if risk_score < 0.2:
+                            risk_level = "🟢 低风险"
+                            risk_color = "green"
+                        elif risk_score < 0.4:
+                            risk_level = "🟡 中低风险"
+                            risk_color = "yellow"
+                        elif risk_score < 0.6:
+                            risk_level = "🟠 中风险"
+                            risk_color = "orange"
+                        else:
+                            risk_level = "🔴 高风险"
+                            risk_color = "red"
+                        
+                        st.markdown(f"#### {risk_level}")
+                        st.progress(min(risk_score, 1.0), text=f"风险指数: {risk_score:.2%}")
+                    else:
+                        st.warning("暂无数据")
+                        
+                except Exception as e:
+                    st.error(f"计算失败: {e}")
+        
+        with risk_col2:
+            st.markdown("#### 📖 风险指标说明")
+            st.markdown("""
+            **年化波动率 (Volatility)**
+            衡量收益率的离散程度，波动率越高表示价格变动越剧烈。
+            
+            **夏普比率 (Sharpe Ratio)**
+            每承担一单位风险所获得的超额收益，>1为优秀，>2为极佳。
+            
+            **最大回撤 (Max Drawdown)**
+            从最高点到最低点的最大跌幅，反映极端风险。
+            
+            **Beta系数**
+            衡量个股相对市场的波动程度。Beta>1表示比市场波动更大。
+            
+            **风险指数**
+            综合波动率、回撤、夏普比率计算的综合风险评分。
+            """)
 
 
 # ═══════════════════════════════════════════
@@ -1911,6 +2247,7 @@ page_map = {
     "🌐 平台对比": page_platform_comparison,
     "🧠 代码分析": page_code_analyzer,
     "🏦 市场看板": page_market,
+    "📈 专业分析": page_analysis,
     "📉 K线分析": page_kline,
     "⚔️ 策略对比": page_compare,
     "📈 策略详情": page_detail,
