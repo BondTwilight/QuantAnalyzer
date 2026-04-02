@@ -1,10 +1,11 @@
 """
-数据层 — AKShare 数据获取 + SQLite 存储
+数据层 — BaoStock 数据获取 + SQLite 存储
+BaoStock 免费A股数据，无需API Key，数据稳定
 """
 import sqlite3
 import pandas as pd
 import numpy as np
-import akshare as ak
+import baostock as bs
 from datetime import datetime, timedelta
 from pathlib import Path
 import sys
@@ -16,99 +17,175 @@ from config import DB_PATH, DATA_DIR, STOCK_POOL, BENCHMARK, DEFAULT_PERIOD
 
 logger = logging.getLogger(__name__)
 
+# BaoStock 代码格式: sh.600519, sz.000001
+def _to_bs_code(ts_code: str) -> str:
+    """000001.SZ -> sz.000001"""
+    parts = ts_code.split(".")
+    if len(parts) == 2:
+        return f"{parts[1].lower()}.{parts[0]}"
+    return ts_code.lower()
+
+def _to_ts_code(bs_code: str) -> str:
+    """sh.600519 -> 600519.SH"""
+    parts = bs_code.split(".")
+    if len(parts) == 2:
+        return f"{parts[1]}.{parts[0].upper()}"
+    return bs_code.upper()
+
 
 class DataFetcher:
-    """AKShare 数据获取器"""
+    """BaoStock 数据获取器"""
 
-    @staticmethod
-    def get_stock_daily(ts_code: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
-        """
-        获取股票日线数据
-        ts_code: 000001.SZ 格式
-        """
+    def __init__(self):
+        self._logged_in = False
+
+    def _ensure_login(self):
+        if not self._logged_in:
+            lg = bs.login()
+            if lg.error_code != "0":
+                raise ConnectionError(f"BaoStock login failed: {lg.error_msg}")
+            self._logged_in = True
+            logger.info("BaoStock logged in")
+
+    def _logout(self):
+        if self._logged_in:
+            bs.logout()
+            self._logged_in = False
+
+    def get_stock_daily(self, ts_code: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
+        """获取股票日线数据"""
         try:
-            # akshare 接口使用 6位代码 格式
-            symbol = ts_code.split(".")[0]
-            df = ak.stock_zh_a_hist(
-                symbol=symbol,
-                period="daily",
-                start_date=start_date or (datetime.now() - timedelta(days=DEFAULT_PERIOD)).strftime("%Y%m%d"),
-                end_date=end_date or datetime.now().strftime("%Y%m%d"),
-                adjust="qfq"  # 前复权
+            self._ensure_login()
+            bs_code = _to_bs_code(ts_code)
+
+            df = bs.query_history_k_data_plus(
+                bs_code,
+                "date,open,high,low,close,volume",
+                start_date=start_date or (datetime.now() - timedelta(days=DEFAULT_PERIOD)).strftime("%Y-%m-%d"),
+                end_date=end_date or datetime.now().strftime("%Y-%m-%d"),
+                frequency="d",
+                adjustflag="2"  # 前复权
             )
-            if df is not None and not df.empty:
-                df.columns = ["date", "open", "close", "high", "low", "volume", "turnover", "amplitude", "pct_change", "change", "turnover_rate"]
-                df["date"] = pd.to_datetime(df["date"])
-                df["ts_code"] = ts_code
-                df = df.set_index("date")
-            return df
+
+            rows = []
+            while df.error_code == "0" and df.next():
+                rows.append(df.get_row_data())
+
+            if not rows:
+                logger.warning(f"No data for {ts_code}")
+                return pd.DataFrame()
+
+            data = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
+            # 转换数据类型
+            for col in ["open", "high", "low", "close", "volume"]:
+                data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0)
+            data["date"] = pd.to_datetime(data["date"])
+            data["ts_code"] = ts_code
+            data = data.set_index("date")
+            data = data.dropna(subset=["close"])
+            data = data[data["close"] > 0]  # 过滤无效数据
+
+            logger.info(f"Fetched {len(data)} rows for {ts_code}")
+            return data
+
         except Exception as e:
             logger.error(f"获取 {ts_code} 日线数据失败: {e}")
             return pd.DataFrame()
 
-    @staticmethod
-    def get_stock_list() -> pd.DataFrame:
-        """获取A股股票列表"""
-        try:
-            df = ak.stock_zh_a_spot_em()
-            if df is not None and not df.empty:
-                return df[["代码", "名称", "最新价", "涨跌幅", "总市值", "流通市值"]]
-            return pd.DataFrame()
-        except Exception as e:
-            logger.error(f"获取股票列表失败: {e}")
-            return pd.DataFrame()
-
-    @staticmethod
-    def get_index_daily(index_code: str = "000300", start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    def get_index_daily(self, index_code: str = "000300", start_date: str = None, end_date: str = None) -> pd.DataFrame:
         """获取指数日线数据 (沪深300等)"""
         try:
-            df = ak.index_zh_a_hist(
-                symbol=index_code,
-                period="daily",
-                start_date=start_date or (datetime.now() - timedelta(days=DEFAULT_PERIOD)).strftime("%Y%m%d"),
-                end_date=end_date or datetime.now().strftime("%Y%m%d"),
+            self._ensure_login()
+            # BaoStock 指数代码: sh.000300
+            bs_code = f"sh.{index_code}"
+
+            df = bs.query_history_k_data_plus(
+                bs_code,
+                "date,open,high,low,close,volume",
+                start_date=start_date or (datetime.now() - timedelta(days=DEFAULT_PERIOD)).strftime("%Y-%m-%d"),
+                end_date=end_date or datetime.now().strftime("%Y-%m-%d"),
+                frequency="d",
+                adjustflag="3"  # 不复权
             )
-            if df is not None and not df.empty:
-                df.columns = ["date", "open", "close", "high", "low", "volume", "turnover"]
-                df["date"] = pd.to_datetime(df["date"])
-                df = df.set_index("date")
-            return df
+
+            rows = []
+            while df.error_code == "0" and df.next():
+                rows.append(df.get_row_data())
+
+            if not rows:
+                return pd.DataFrame()
+
+            data = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
+            for col in ["open", "high", "low", "close", "volume"]:
+                data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0)
+            data["date"] = pd.to_datetime(data["date"])
+            data = data.set_index("date")
+            data = data[data["close"] > 0]
+
+            logger.info(f"Fetched {len(data)} rows for index {index_code}")
+            return data
+
         except Exception as e:
             logger.error(f"获取指数 {index_code} 数据失败: {e}")
             return pd.DataFrame()
 
     @staticmethod
-    def get_sector_index(sector_name: str) -> pd.DataFrame:
-        """获取行业板块指数"""
+    def get_stock_list() -> pd.DataFrame:
+        """获取A股实时行情 (通过baostock)"""
         try:
-            df = ak.stock_board_industry_hist_em(
-                symbol=sector_name,
-                period="daily",
-                start_date=(datetime.now() - timedelta(days=DEFAULT_PERIOD)).strftime("%Y%m%d"),
-                end_date=datetime.now().strftime("%Y%m%d"),
-                adjust="qfq"
+            bs.login()
+            rs = bs.query_stock_basic()
+            rows = []
+            while rs.error_code == "0" and rs.next():
+                rows.append(rs.get_row_data())
+            bs.logout()
+            if rows:
+                df = pd.DataFrame(rows)
+                return df
+            return pd.DataFrame()
+        except Exception as e:
+            logger.error(f"获取股票列表失败: {e}")
+            return pd.DataFrame()
+
+    def get_sector_index(self, sector_name: str) -> pd.DataFrame:
+        """获取行业板块指数 — 用代表性ETF替代"""
+        sector_etf = {
+            "银行": "sh.512800",  # 银行ETF
+            "白酒": "sz.159928",  # 白酒ETF
+            "医药": "sz.159938",  # 医药ETF
+            "消费": "sz.159928",  # 白酒ETF代消费
+            "科技": "sz.159915",  # 创业板ETF
+            "新能源": "sz.159824",  # 新能源车ETF
+        }
+        bs_code = sector_etf.get(sector_name)
+        if not bs_code:
+            return pd.DataFrame()
+
+        try:
+            self._ensure_login()
+            df = bs.query_history_k_data_plus(
+                bs_code, "date,open,high,low,close,volume",
+                start_date=(datetime.now() - timedelta(days=DEFAULT_PERIOD)).strftime("%Y-%m-%d"),
+                end_date=datetime.now().strftime("%Y-%m-%d"),
+                frequency="d", adjustflag="2"
             )
-            if df is not None and not df.empty:
-                df.columns = ["date", "open", "close", "high", "low", "volume", "turnover", "amplitude", "pct_change", "change", "turnover_rate"]
-                df["date"] = pd.to_datetime(df["date"])
-                df = df.set_index("date")
-            return df
+            rows = []
+            while df.error_code == "0" and df.next():
+                rows.append(df.get_row_data())
+            if not rows:
+                return pd.DataFrame()
+            data = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
+            for col in ["open", "high", "low", "close", "volume"]:
+                data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0)
+            data["date"] = pd.to_datetime(data["date"])
+            data = data.set_index("date")
+            return data[data["close"] > 0]
         except Exception as e:
             logger.error(f"获取行业 {sector_name} 数据失败: {e}")
             return pd.DataFrame()
 
-    @staticmethod
-    def get_financial_indicator(ts_code: str) -> pd.DataFrame:
-        """获取财务指标 (ROE, PE, PB等)"""
-        try:
-            symbol = ts_code.split(".")[0]
-            df = ak.stock_financial_abstract_ths(symbol=symbol)
-            if df is not None and not df.empty:
-                return df
-            return pd.DataFrame()
-        except Exception as e:
-            logger.error(f"获取 {ts_code} 财务指标失败: {e}")
-            return pd.DataFrame()
+    def close(self):
+        self._logout()
 
 
 class Database:
@@ -133,7 +210,6 @@ class Database:
         conn = self._get_conn()
         cursor = conn.cursor()
 
-        # 回测结果表
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS backtest_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -159,7 +235,6 @@ class Database:
             )
         """)
 
-        # 每日净值表
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS daily_values (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -174,7 +249,6 @@ class Database:
             )
         """)
 
-        # 交易记录表
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS trade_records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -189,7 +263,6 @@ class Database:
             )
         """)
 
-        # AI分析报告表
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS ai_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -202,7 +275,6 @@ class Database:
             )
         """)
 
-        # 策略参数表
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS strategy_params (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -215,10 +287,8 @@ class Database:
         """)
 
         conn.commit()
-        logger.info("数据库初始化完成")
 
     def save_backtest_result(self, result: dict):
-        """保存回测结果"""
         conn = self._get_conn()
         cursor = conn.cursor()
         cursor.execute("""
@@ -244,7 +314,6 @@ class Database:
         return cursor.lastrowid
 
     def save_daily_values(self, strategy_name: str, df: pd.DataFrame):
-        """保存每日净值数据"""
         conn = self._get_conn()
         for idx, row in df.iterrows():
             try:
@@ -265,7 +334,6 @@ class Database:
         conn.commit()
 
     def save_trades(self, strategy_name: str, trades: list):
-        """保存交易记录"""
         conn = self._get_conn()
         for t in trades:
             conn.execute("""
@@ -279,7 +347,6 @@ class Database:
         conn.commit()
 
     def get_backtest_results(self, strategy_name=None) -> pd.DataFrame:
-        """获取回测结果"""
         conn = self._get_conn()
         if strategy_name:
             df = pd.read_sql(
@@ -291,7 +358,6 @@ class Database:
         return df
 
     def get_daily_values(self, strategy_name: str) -> pd.DataFrame:
-        """获取策略每日净值"""
         conn = self._get_conn()
         df = pd.read_sql(
             "SELECT * FROM daily_values WHERE strategy_name = ? ORDER BY date",
@@ -303,7 +369,6 @@ class Database:
         return df
 
     def get_latest_results(self) -> pd.DataFrame:
-        """获取每个策略的最新回测结果"""
         conn = self._get_conn()
         df = pd.read_sql("""
             SELECT * FROM backtest_results
@@ -316,7 +381,6 @@ class Database:
 
     def save_ai_report(self, strategy_name: str, report_date: str, provider: str,
                        analysis_type: str, content: str):
-        """保存AI分析报告"""
         conn = self._get_conn()
         conn.execute("""
             INSERT INTO ai_reports (strategy_name, report_date, provider, analysis_type, content)

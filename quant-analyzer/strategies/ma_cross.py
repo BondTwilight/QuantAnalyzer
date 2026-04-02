@@ -3,7 +3,6 @@
 经典趋势跟踪策略 — 金叉买入，死叉卖出
 """
 import backtrader as bt
-import talib
 import numpy as np
 
 

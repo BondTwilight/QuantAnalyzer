@@ -55,7 +55,7 @@ class BollingerSqueeze(bt.Strategy):
     def __init__(self):
         self.strategy_name = self.params.strategy_name
         self.boll = bt.indicators.BollingerBands(self.data.close, period=self.p.bb_period, devfactor=self.p.bb_dev)
-        self.atr = bt.indicators.ATR(self.data.close, period=self.p.atr_period)
+        self.atr = bt.indicators.ATR(self.data, period=self.p.atr_period)
         self.bb_width = (self.boll.lines.top - self.boll.lines.bot) / self.boll.lines.mid
         self.order = None
 

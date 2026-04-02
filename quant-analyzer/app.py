@@ -383,18 +383,23 @@ def page_ai():
                     st.markdown(AIAnalyzer(st.session_state.get("ai_provider","deepseek")).market_analysis())
                 except Exception as e: st.error(f"失败: {e}")
         try:
-            import akshare as ak
+            import baostock as bs
+            import pandas as pd
             with st.spinner("获取市场数据..."):
-                df = ak.stock_zh_a_spot_em()
-            if df is not None and not df.empty:
-                c1,c2,c3 = st.columns(3)
-                total=len(df); up=len(df[df["涨跌幅"]>0])
-                with c1: st.metric("上涨",f"{up}",f"{up/total:.1%}")
-                with c2: st.metric("下跌",f"{total-up-len(df[df['涨跌幅']==0])}")
-                with c3: st.metric("均涨幅",f"{df['涨跌幅'].mean():.2f}%")
-                st.markdown("#### 🔥 涨幅TOP10")
-                st.dataframe(df.nlargest(10,"涨跌幅")[["代码","名称","最新价","涨跌幅"]].rename(columns={"最新价":"价格","涨跌幅":"涨幅"}),hide_index=True,use_container_width=True)
-        except Exception as e: st.warning(f"数据获取失败: {e}")
+                lg = bs.login()
+                rs = bs.query_history_k_data_plus("sh.000001", "date,close,volume",
+                    start_date=datetime.now().strftime("%Y%m%d"), end_date=datetime.now().strftime("%Y%m%d"),
+                    frequency="d", adjustflag="3")
+                rows = []
+                while rs.error_code == "0" and rs.next():
+                    rows.append(rs.get_row_data())
+                bs.logout()
+            if rows:
+                st.info("上证指数今日数据获取成功（BaoStock）")
+            else:
+                st.info("今日数据暂未更新（非交易时间）")
+        except Exception as e:
+            st.warning(f"数据获取失败: {e}")
 
     with tab3:
         st.markdown("### 🧬 AI 自学习进化引擎")

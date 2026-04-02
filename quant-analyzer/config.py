@@ -51,6 +51,12 @@ SECTORS = {
 
 # ── AI分析配置 ──
 AI_PROVIDERS = {
+    "zhipu": {
+        "name": "智谱AI (免费)",
+        "api_base": os.getenv("ZHIPU_API_BASE", "https://open.bigmodel.cn/api/paas/v4"),
+        "api_key": os.getenv("ZHIPU_API_KEY", ""),
+        "model": "glm-4-flash",  # 免费模型
+    },
     "deepseek": {
         "name": "DeepSeek",
         "api_base": os.getenv("DEEPSEEK_API_BASE", "https://api.deepseek.com/v1"),
@@ -63,14 +69,8 @@ AI_PROVIDERS = {
         "api_key": os.getenv("OPENAI_API_KEY", ""),
         "model": "gpt-4o-mini",
     },
-    "zhipu": {
-        "name": "智谱AI",
-        "api_base": os.getenv("ZHIPU_API_BASE", "https://open.bigmodel.cn/api/paas/v4"),
-        "api_key": os.getenv("ZHIPU_API_KEY", ""),
-        "model": "glm-4-flash",
-    },
 }
-DEFAULT_AI_PROVIDER = "deepseek"
+DEFAULT_AI_PROVIDER = "zhipu"
 
 # ── 调度配置 ──
 SCHEDULER_CRON = "30 15 * * 1-5"  # 工作日 15:30 自动回测

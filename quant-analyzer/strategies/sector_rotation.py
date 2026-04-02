@@ -36,7 +36,7 @@ class SectorRotationStrategy(bt.Strategy):
         self.sma_long = bt.indicators.SMA(self.data.close, period=60)
 
         # 波动率
-        self.atr = bt.indicators.ATR(self.data.close, period=14)
+        self.atr = bt.indicators.ATR(self.data, period=14)
 
         # 成交量
         self.vol_sma = bt.indicators.SMA(self.data.volume, period=20)
