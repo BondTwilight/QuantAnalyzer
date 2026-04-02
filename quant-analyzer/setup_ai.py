@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 QuantAnalyzer 一键配置脚本
-自动检测并配置AI模型API Key
+自动检测并配置数据源和AI模型API Key
 """
 
 import os
@@ -12,6 +12,15 @@ from pathlib import Path
 # 获取项目根目录
 SCRIPT_DIR = Path(__file__).parent
 ENV_FILE = SCRIPT_DIR / ".env"
+
+# 聚宽数据源配置
+JOINQUANT_CONFIG = {
+    "name": "聚宽 JoinQuant",
+    "desc": "高质量A股数据源，支持期货/期权/财务因子",
+    "url": "https://www.joinquant.com/",
+    "env_keys": ["JQ_USERNAME", "JQ_PASSWORD"],
+    "signup_url": "https://www.joinquant.com/register",
+}
 
 # AI模型配置
 AI_MODELS_CONFIG = {
@@ -246,22 +255,28 @@ def main():
     
     while True:
         print("\n请选择操作:")
-        print("  [1] 🔥 一键配置 Cerebras (推荐)")
-        print("  [2] 📝 交互式配置所有模型")
-        print("  [3] 🧪 测试AI连接")
-        print("  [4] 📖 查看配置说明")
+        print("  [1] 📊 配置聚宽数据源 (推荐注册)")
+        print("  [2] 🔥 一键配置 Cerebras AI")
+        print("  [3] 📝 交互式配置所有AI模型")
+        print("  [4] 🧪 测试数据源连接")
+        print("  [5] 📖 查看配置说明")
         print("  [0] 退出")
         print()
         
         choice = input("请输入选项: ").strip()
         
         if choice == "1":
-            auto_setup_cerebras()
+            configure_joinquant()
         elif choice == "2":
-            interactive_configure()
+            auto_setup_cerebras()
         elif choice == "3":
-            test_ai_connection()
+            interactive_configure()
         elif choice == "4":
+            print("\n测试AI连接...")
+            test_ai_connection()
+            print("\n测试聚宽连接...")
+            test_joinquant()
+        elif choice == "5":
             show_help()
         elif choice == "0":
             print("\n👋 再见!")
@@ -272,10 +287,20 @@ def main():
 def show_help():
     """显示帮助信息"""
     print("""
-📖 QuantAnalyzer AI模型配置指南
+📖 QuantAnalyzer 配置指南
 =================================
 
-【免费模型推荐】(按推荐程度排序)
+【数据源配置】(聚宽推荐注册)
+─────────────────────────────────
+聚宽 JoinQuant: 高质量A股数据，支持期货/期权/财务因子
+- 注册: https://www.joinquant.com/
+- 免费账户每日有API调用次数限制
+- 配置后重启应用即可使用
+
+BaoStock: 免费无需注册，直连数据 (已默认配置)
+
+【免费AI模型推荐】(按推荐程度排序)
+─────────────────────────────────
 
 1. 🔥 Cerebras (强烈推荐!)
    - 完全免费、无限制
@@ -293,15 +318,87 @@ def show_help():
    - 注册: https://console.groq.com/
 
 【配置方法】
-1. 运行本脚本选择配置方式
-2. 按提示获取API Key并粘贴
-3. 重启 QuantAnalyzer 应用
+1. 运行本脚本: python setup_ai.py
+2. 选择 [1] 配置聚宽数据源
+3. 或选择 [2] 配置AI模型
+4. 重启 QuantAnalyzer 应用生效
 
 【故障排除】
 - 如果API Key无效, 请检查是否正确复制
 - 如果网络超时, 可能是代理/VPN问题
 - 查看日志获取详细错误信息
 """)
+
+def configure_joinquant():
+    """配置聚宽数据源"""
+    print("\n" + "=" * 60)
+    print("  📊 配置聚宽 JoinQuant 数据源")
+    print("=" * 60)
+    print(f"\n聚宽提供高质量A股数据，支持:")
+    print("  - 股票/期货/期权日线数据")
+    print("  - 财务因子数据")
+    print("  - 指数成分股")
+    print(f"\n注册地址: {JOINQUANT_CONFIG['url']}")
+    print("免费账户每日有API调用次数限制\n")
+    
+    # 询问是否打开注册页面
+    open_page = input("是否打开聚宽注册页面? (y/n): ").strip().lower()
+    if open_page == "y":
+        open_signup_page(JOINQUANT_CONFIG["signup_url"])
+    
+    print("\n请登录聚宽后获取账号信息:")
+    print("  登录地址: https://www.joinquant.com/")
+    
+    username = input("\n请输入聚宽用户名/手机号: ").strip()
+    password = input("请输入聚宽密码: ").strip()
+    
+    if username and password:
+        os.environ["JQ_USERNAME"] = username
+        os.environ["JQ_PASSWORD"] = password
+        
+        # 保存到.env
+        env_dict = load_existing_env()
+        env_dict["JQ_USERNAME"] = username
+        env_dict["JQ_PASSWORD"] = password
+        save_env(env_dict)
+        
+        print("\n✅ 聚宽配置已保存!")
+        
+        # 测试连接
+        test_joinquant()
+    else:
+        print("\n⏭️ 跳过配置")
+
+def test_joinquant():
+    """测试聚宽连接"""
+    print("\n🧪 测试聚宽连接...")
+    
+    try:
+        import jqdatasdk as jq
+        username = os.getenv("JQ_USERNAME", "")
+        password = os.getenv("JQ_PASSWORD", "")
+        
+        if not username or not password:
+            print("❌ 未配置聚宽账号")
+            return False
+        
+        jq.auth(username, password)
+        print("✅ 聚宽连接成功!")
+        
+        # 获取用户信息
+        q = jq.get_query_count()
+        print(f"   今日剩余调用次数: {q}")
+        
+        jq.logout()
+        return True
+        
+    except ImportError:
+        print("❌ 未安装 jqdatasdk")
+        print("   请运行: pip install jqdatasdk")
+        return False
+    except Exception as e:
+        print(f"❌ 连接失败: {e}")
+        return False
 
 if __name__ == "__main__":
     main()
