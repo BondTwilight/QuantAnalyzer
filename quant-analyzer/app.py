@@ -6,6 +6,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import sys
+import os
 from pathlib import Path
 from datetime import datetime, timedelta
 import logging
@@ -1139,7 +1140,7 @@ def page_calendar():
         # ── 年度收益统计 ──
         st.markdown('<div class="section-title">📊 年度收益统计</div>', unsafe_allow_html=True)
         yearly = daily.groupby("year")["ret"].agg(["sum", "mean", "std", "min", "max", "count"]).reset_index()
-        yearly.columns = ["年份", "累计收益%",", "日均%", "波动%", "最大单日%", "最小单日%", "交易日"]
+        yearly.columns = ["年份", "累计收益%", "日均%", "波动%", "最大单日%", "最小单日%", "交易日"]
         st.markdown(f'<div class="chart-container" style="overflow-x:auto;padding:0;">'
                     f'{yearly.to_html(escape=False, index=False, float_format=lambda x: f"{x:.2f}")}</div>',
                     unsafe_allow_html=True)
@@ -1386,39 +1387,65 @@ def page_settings():
     tab1, tab2, tab3 = st.tabs(["🔑 API配置", "📝 自定义策略", "📊 数据管理"])
 
     with tab1:
-        st.markdown("### AI 模型 API Key 配置")
-        from config import AI_PROVIDERS
-        for key, cfg in AI_PROVIDERS.items():
-            new_key = st.text_input(f"{cfg['name']} API Key", value=cfg.get("api_key", ""),
-                key=f"key_{key}", type="password")
-            if new_key and new_key != cfg.get("api_key", ""):
-                env_path = ROOT_DIR / ".env"
-                env_lines = []
-                if env_path.exists():
-                    env_lines = env_path.read_text(encoding="utf-8").splitlines()
-                env_key = f"{key.upper()}_API_KEY"
-                found = False
-                for i, line in enumerate(env_lines):
-                    if line.startswith(f"{env_key}="):
-                        env_lines[i] = f"{env_key}={new_key}"
-                        found = True
-                        break
-                if not found:
-                    env_lines.append(f"{env_key}={new_key}")
-                env_path.write_text("\n".join(env_lines), encoding="utf-8")
-                import os
-                os.environ[env_key] = new_key
-                cfg["api_key"] = new_key
-                st.success(f"✅ {cfg['name']} API Key 已保存")
+        st.markdown("### 🤖 AI 模型 API Key 配置")
+        from config import AI_MODELS
+        # 按tier分组展示
+        tiers = {1: "🌐 无需注册 / 注册即用", 2: "📝 注册后免费额度", 3: "💰 付费/有限免费"}
+        tier_names = {1: "Tier 1 — 免费无Key", 2: "Tier 2 — 注册免费Key", 3: "Tier 3 — 付费Key"}
+
+        for tier in [1, 2, 3]:
+            tier_models = {k: v for k, v in AI_MODELS.items() if v.get("tier") == tier}
+            if not tier_models:
+                continue
+
+            with st.expander(f"{tier_names[tier]} ({len(tier_models)}个模型)", expanded=(tier <= 2)):
+                for key, cfg in tier_models.items():
+                    has_key = bool(cfg.get("api_key") or os.getenv(cfg["env_key"], ""))
+                    status = "✅ 已配置" if has_key else "⚙️ 未配置"
+                    st.markdown(f"**{cfg['name']}** — {cfg['desc']} — **{status}**  | 限额: `{cfg['rate_limit']}`")
+
+                    new_key = st.text_input(
+                        f"{cfg['name']}", value=cfg.get("api_key", ""),
+                        key=f"key_{key}", type="password", label_visibility="collapsed"
+                    )
+                    if new_key and new_key != cfg.get("api_key", ""):
+                        env_path = ROOT_DIR / ".env"
+                        env_lines = []
+                        if env_path.exists():
+                            env_lines = env_path.read_text(encoding="utf-8").splitlines()
+                        env_key = f"{key.upper()}_API_KEY"
+                        found = False
+                        for i, line in enumerate(env_lines):
+                            if line.startswith(f"{env_key}="):
+                                env_lines[i] = f"{env_key}={new_key}"
+                                found = True
+                                break
+                        if not found:
+                            env_lines.append(f"{env_key}={new_key}")
+                        env_path.write_text("\n".join(env_lines), encoding="utf-8")
+                        os.environ[env_key] = new_key
+                        cfg["api_key"] = new_key
+                        st.success(f"✅ {cfg['name']} API Key 已保存到.env文件")
+
+                        # 自动添加到策略库
+                        from strategy_library import STRATEGY_LIBRARY
+                        st.rerun()
 
         st.markdown("---")
         st.markdown('''
         <div class="glass-card">
-            <div style="color:#e2e8f0;font-weight:600;margin-bottom:8px;">🔑 获取免费 API Key</div>
-            <div style="color:#94a3b8;font-size:13px;line-height:2;">
-                • <b>智谱AI (推荐)</b> — <a href="https://open.bigmodel.cn/" target="_blank" style="color:#3b82f6;">open.bigmodel.cn</a> — GLM-4-Flash 免费额度<br>
-                • <b>DeepSeek</b> — <a href="https://platform.deepseek.com/api_keys" target="_blank" style="color:#3b82f6;">platform.deepseek.com</a> — 极低价格<br>
-                • <b>OpenAI</b> — <a href="https://platform.openai.com/api-keys" target="_blank" style="color:#3b82f6;">platform.openai.com</a> — 按量付费
+            <div style="color:#e2e8f0;font-weight:600;margin-bottom:12px;">🔑 免费 API Key 获取地址</div>
+            <div style="color:#94a3b8;font-size:12px;line-height:2.2;">
+                <b style="color:#10b981;">🌐 国际免费首选:</b><br>
+                &nbsp;&nbsp;• <b>Groq</b> (Llama 3.3) — <a href="https://console.groq.com/keys" target="_blank" style="color:#3b82f6;">console.groq.com</a> — 免费无限制, 30秒注册<br>
+                &nbsp;&nbsp;• <b>Cerebras</b> (Llama 3.3) — <a href="https://cloud.cerebras.ai/" target="_blank" style="color:#3b82f6;">cloud.cerebras.ai</a> — 免费无限制<br>
+                &nbsp;&nbsp;• <b>Google Gemini</b> — <a href="https://aistudio.google.com/apikey" target="_blank" style="color:#3b82f6;">aistudio.google.com</a> — 免费额度<br>
+                <b style="color:#f59e0b;">🇨🇳 国产免费首选:</b><br>
+                &nbsp;&nbsp;• <b>智谱AI</b> (GLM-4-Flash) — <a href="https://open.bigmodel.cn/" target="_blank" style="color:#3b82f6;">open.bigmodel.cn</a> — 免费额度, 25 RPM<br>
+                &nbsp;&nbsp;• <b>DeepSeek V3</b> — <a href="https://platform.deepseek.com/" target="_blank" style="color:#3b82f6;">platform.deepseek.com</a> — 新用户500万token<br>
+                &nbsp;&nbsp;• <b>通义千问</b> (Qwen) — <a href="https://dashscope.console.aliyun.com/" target="_blank" style="color:#3b82f6;">dashscope.aliyun.com</a> — 100万token/月免费<br>
+                &nbsp;&nbsp;• <b>Kimi/Moonshot</b> — <a href="https://platform.moonshot.cn/" target="_blank" style="color:#3b82f6;">platform.moonshot.cn</a> — 免费额度<br>
+                &nbsp;&nbsp;• <b>SiliconFlow</b> (聚合) — <a href="https://cloud.siliconflow.cn/" target="_blank" style="color:#3b82f6;">cloud.siliconflow.cn</a> — 14元/天免费<br>
             </div>
         </div>
         ''', unsafe_allow_html=True)
@@ -1485,11 +1512,256 @@ def page_settings():
 
 
 # ═══════════════════════════════════════════
+# 📚 策略库页面
+# ═══════════════════════════════════════════
+def page_library():
+    st.markdown('<div class="section-title">📚 内置策略库</div>', unsafe_allow_html=True)
+    st.markdown('<div class="alert-box alert-info">🎯 点击任意策略即可一键回测。支持趋势跟踪、均值回归、动量因子、多因子等多种类型。</div>', unsafe_allow_html=True)
+
+    # 导入策略库
+    try:
+        from strategy_library import STRATEGY_LIBRARY, get_all_strategies, list_categories
+        all_strategies = get_all_strategies()
+    except ImportError:
+        st.error("策略库加载失败")
+        return
+
+    # 分类筛选
+    categories = list(list_categories().keys())
+    cols = st.columns([2, 2, 1])
+    with cols[0]:
+        selected_cat = st.selectbox("📁 策略分类", ["全部"] + categories)
+    with cols[1]:
+        difficulty_filter = st.selectbox("⭐ 难度筛选", ["全部", "⭐", "⭐⭐", "⭐⭐⭐"])
+    with cols[2]:
+        st.write("")  # 占位
+
+    # 搜索
+    search_q = st.text_input("🔍 搜索策略", placeholder="输入策略名称或描述...")
+
+    # 过滤
+    filtered = all_strategies
+    if selected_cat != "全部":
+        filtered = [s for s in filtered if s["category"] == selected_cat]
+    if difficulty_filter != "全部":
+        filtered = [s for s in filtered if s["difficulty"] == difficulty_filter]
+    if search_q:
+        q = search_q.lower()
+        filtered = [s for s in filtered if q in s["name_cn"].lower() or q in s["name"].lower() or q in s["description"].lower()]
+
+    st.markdown(f"**共 {len(filtered)} 个策略**")
+    st.markdown("---")
+
+    # 展示策略卡片
+    for i in range(0, len(filtered), 2):
+        col1, col2 = st.columns(2)
+        for j, col in enumerate([col1, col2]):
+            idx = i + j
+            if idx >= len(filtered):
+                break
+            s = filtered[idx]
+
+            with col:
+                cat_colors = {
+                    "趋势跟踪": "#3b82f6", "均值回归": "#10b981",
+                    "动量因子": "#f59e0b", "多因子": "#8b5cf6",
+                    "技术指标": "#ec4899", "事件驱动": "#06b6d4",
+                }
+            color = cat_colors.get(s["category"], "#3b82f6")
+
+            with col.container():
+                st.markdown(f"""
+                <div style="background:#111827;border:1px solid #1e293b;border-radius:16px;padding:20px;margin-bottom:12px;position:relative;overflow:hidden;">
+                    <div style="position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,{color},transparent);"></div>
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                        <span style="background:{color}22;color:{color};padding:2px 10px;border-radius:20px;font-size:12px;font-weight:600;">{s["category"]}</span>
+                        <span style="color:#94a3b8;font-size:12px;">{s["difficulty"]}</span>
+                        <span style="color:#475569;font-size:12px;margin-left:auto;">{s["source"]}</span>
+                    </div>
+                    <div style="color:#e2e8f0;font-size:16px;font-weight:600;margin-bottom:6px;">{s["name_cn"]}</div>
+                    <div style="color:#64748b;font-size:12px;margin-bottom:10px;">{s["name"]}</div>
+                    <div style="color:#94a3b8;font-size:13px;line-height:1.6;margin-bottom:12px;">{s["description"][:120]}{'...' if len(s['description'])>120 else ''}</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
+                        <span style="background:#1e293b;color:#94a3b8;padding:2px 8px;border-radius:6px;font-size:11px;">💰 预期 {s["annual_expected"]}</span>
+                        <span style="background:#1e293b;color:#94a3b8;padding:2px 8px;border-radius:6px;font-size:11px;">📌 适用 {s["suitable"]}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # 回测按钮
+                if st.button(f"▶️ 回测 {s['name_cn']}", key=f"run_{s['name']}", use_container_width=True):
+                    st.session_state.selected_stock = "000001.SZ"
+                    st.session_state.selected_strategy = s["name"]
+                    st.session_state.run_backtest = True
+                    st.success(f"✅ 已选择策略: {s['name_cn']}，请前往「⚔️ 策略对比」页面运行回测")
+                    st.rerun()
+
+    st.markdown("---")
+    st.markdown("""
+    <div class="glass-card" style="text-align:center;color:#64748b;font-size:13px;">
+        💡 <b>提示</b>：策略库持续更新中。你可以上传自己的策略到「⚙️ 系统设置」页面，AI将自动分析并给出改进建议。
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════
+# 🧠 策略代码分析器页面
+# ═══════════════════════════════════════════
+def page_code_analyzer():
+    st.markdown('<div class="section-title">🧠 策略代码 AI 分析器</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="alert-box alert-info">
+        🤖 将任意量化策略代码粘贴到下方，AI将自动解析买卖逻辑、评估风险等级、给出改进建议。<br>
+        支持 <b>Backtrader</b> / <b>聚宽</b> / <b>任意Python交易代码</b>。
+    </div>
+    """, unsafe_allow_html=True)
+
+    # 初始化分析器
+    from core.ai_analyzer import AIAnalyzer, MultiModelAnalyzer
+    from config import AI_MODELS, DEFAULT_MODEL_PRIORITY
+
+    analyzer = AIAnalyzer()
+    multi = MultiModelAnalyzer()
+
+    # 检测可用模型
+    available = [AI_MODELS[m]["name"] for m in multi.available_models]
+    unavailable = [AI_MODELS[m]["name"] for m in DEFAULT_MODEL_PRIORITY if m not in multi.available_models]
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if available:
+            st.markdown(f"✅ **已接入模型 ({len(available)})**: {', '.join(available[:4])}{'...' if len(available)>4 else ''}")
+    with col2:
+        if unavailable:
+            st.markdown(f"⚙️ **未配置 ({len(unavailable)})**: {', '.join(unavailable[:3])}{'...' if len(unavailable)>3 else ''}")
+
+    st.markdown("---")
+
+    # 示例代码
+    with st.expander("📋 查看示例 Backtrader 策略代码"):
+        example_code = '''import backtrader as bt
+
+class MyStrategy(bt.Strategy):
+    params = (
+        ("fast", 5),    # 短期均线周期
+        ("slow", 20),   # 长期均线周期
+    )
+
+    def __init__(self):
+        # 均线指标
+        self.sma_fast = bt.indicators.SMA(self.data.close, period=self.params.fast)
+        self.sma_slow = bt.indicators.SMA(self.data.close, period=self.params.slow)
+        # 金叉/死叉信号
+        self.crossover = bt.indicators.CrossOver(self.sma_fast, self.sma_slow)
+
+    def next(self):
+        # 金叉买入，死叉卖出
+        if self.crossover > 0:
+            self.buy()
+        elif self.crossover < 0:
+            self.sell()
+'''
+        st.code(example_code, language="python")
+
+    # 代码输入
+    st.markdown("#### 📝 粘贴策略代码")
+    code_input = st.text_area(
+        "策略代码",
+        placeholder="在此粘贴你的量化策略代码...",
+        height=350,
+        label_visibility="collapsed"
+    )
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        source_type = st.selectbox("代码类型", ["auto", "backtrader", "jqdata", "pseudocode"], format_func=lambda x: {
+            "auto": "🤖 自动检测", "backtrader": "Backtrader", "jqdata": "聚宽JQData", "pseudocode": "伪代码/描述"
+        }[x])
+
+    with col2:
+        st.write("")
+
+    if st.button("🚀 AI 深度分析", type="primary", use_container_width=True):
+        if not code_input.strip():
+            st.warning("请先粘贴策略代码")
+        else:
+            with st.spinner("🤖 AI 正在分析策略代码..."):
+                result = analyzer.analyze_code(code_input, source_type)
+
+            # 解析结果
+            structure = result.get("structure", {})
+            ai_analysis = result.get("ai_analysis", "")
+            risk_info = result.get("risk_info", {})
+
+            # 结构分析
+            st.markdown("#### 📊 代码结构分析")
+            struct_cols = st.columns(4)
+            with struct_cols[0]:
+                st.metric("交易逻辑", "✅ 有" if structure.get("has_next") else "❌ 缺失", delta=None)
+            with struct_cols[1]:
+                st.metric("买入逻辑", "✅ 有" if structure.get("has_buy_logic") else "❌ 缺失", delta=None)
+            with struct_cols[2]:
+                st.metric("卖出逻辑", "✅ 有" if structure.get("has_sell_logic") else "❌ 缺失", delta=None)
+            with struct_cols[3]:
+                st.metric("可回测性", "✅ 可回测" if structure.get("can_backtest") else "⚠️ 需修改", delta=None)
+
+            # 检测到的指标
+            indicators = structure.get("indicators", [])
+            if indicators:
+                st.markdown("**🔧 检测到的技术指标**: " + " ".join([f"`{i}`" for i in indicators]))
+
+            # 检测到的参数
+            params = structure.get("parameters", [])
+            if params:
+                st.markdown(f"**⚙️ 检测到的参数** ({len(params)}个): " + ", ".join([f"`{p['name']}={p['value']}`" for p in params[:8]]))
+
+            # 问题
+            issues = structure.get("issues", [])
+            if issues:
+                for issue in issues:
+                    st.markdown(f'<div class="alert-box alert-warning">⚠️ {issue}</div>', unsafe_allow_html=True)
+
+            st.markdown("---")
+
+            # 风险评估
+            st.markdown("#### ⚠️ 风险评估")
+            risk_level = risk_info.get("level", "未知")
+            risk_issues = risk_info.get("issues", [])
+            st.markdown(f"**风险等级**: {risk_level}")
+            for rissue in risk_issues:
+                st.markdown(f"- {rissue}")
+
+            st.markdown("---")
+
+            # AI深度分析
+            if ai_analysis and "分析失败" not in ai_analysis:
+                st.markdown("#### 🤖 AI 深度分析报告")
+                st.markdown(ai_analysis)
+            else:
+                st.markdown('<div class="alert-box alert-warning">AI分析暂不可用。请在「⚙️ 系统设置」中配置 API Key。</div>', unsafe_allow_html=True)
+
+            st.markdown("---")
+
+            # 快速回测按钮
+            if structure.get("can_backtest"):
+                st.markdown("""
+                <div style="background:#111827;border:1px solid #10b981;border-radius:12px;padding:16px;text-align:center;">
+                    <span style="color:#10b981;font-weight:600;">✅ 策略代码可回测</span><br>
+                    <span style="color:#64748b;font-size:13px;">前往「⚔️ 策略对比」页面运行回测</span>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="alert-box alert-warning">⚠️ 策略代码存在缺失项，建议根据AI分析报告修改后再回测</div>', unsafe_allow_html=True)
+
+
+# ═══════════════════════════════════════════
 # 主路由
 # ═══════════════════════════════════════════
 page = render_sidebar()
 page_map = {
     "📊 策略总览": page_overview,
+    "📚 策略库": page_library,
+    "🧠 代码分析": page_code_analyzer,
     "🏦 市场看板": page_market,
     "📉 K线分析": page_kline,
     "⚔️ 策略对比": page_compare,
