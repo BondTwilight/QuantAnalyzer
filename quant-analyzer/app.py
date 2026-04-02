@@ -542,14 +542,24 @@ def page_overview():
         pass
 
 
+
+
 # ═══════════════════════════════════════════
-# 页面2: 市场看板（新增）
+# 页面2: 市场看板（改进版）
 # ═══════════════════════════════════════════
 def page_market():
     st.title("🏦 市场看板")
 
-    # ── 获取大盘数据 ──
-    indices_data = {}
+    # ── 刷新按钮 ──
+    col1, col2, col3 = st.columns([1, 1, 2])
+    with col1:
+        if st.button("🔄 刷新数据", use_container_width=True, type="primary"):
+            st.cache_data.clear()
+            st.rerun()
+    with col2:
+        data_source = st.selectbox("数据源", ["BaoStock (免费)", "聚宽 (需注册)"], index=0)
+
+    # ── 指数列表 ──
     indices = [
         ("sh.000001", "上证指数"),
         ("sz.399001", "深证成指"),
@@ -557,40 +567,66 @@ def page_market():
         ("sh.000300", "沪深300"),
     ]
 
-    try:
-        import baostock as bs
-        lg = bs.login()
-        end_d = datetime.now().strftime("%Y%m%d")
-        start_d = (datetime.now() - timedelta(days=7)).strftime("%Y%m%d")
+    # ── 获取数据 ──
+    with st.spinner("正在获取市场数据..."):
+        indices_data = {}
+        
+        if "聚宽" in data_source:
+            # 聚宽数据源
+            try:
+                from data.joinquant import JoinQuantFetcher
+                jq = JoinQuantFetcher()
+                if jq.connected:
+                    for code, name in indices:
+                        # 转换代码格式
+                        jqd_code = code.replace("sh.", "XSHG.").replace("sz.", "XSHE.")
+                        df = jq.get_security_bars(jqd_code, count=7)
+                        if df is not None:
+                            indices_data[name] = df
+                    jq.disconnect()
+                else:
+                    st.warning("聚宽未连接，将使用BaoStock备用")
+                    raise Exception("聚宽未连接")
+            except Exception as e:
+                st.info(f"聚宽连接失败: {e}, 切换到BaoStock...")
+        
+        if not indices_data:
+            # BaoStock备用
+            try:
+                import baostock as bs
+                bs.login()
+                end_d = datetime.now().strftime("%Y%m%d")
+                start_d = (datetime.now() - timedelta(days=7)).strftime("%Y%m%d")
 
-        for code, name in indices:
-            rs = bs.query_history_k_data_plus(code, "date,open,high,low,close,volume",
-                start_date=start_d, end_date=end_d, frequency="d", adjustflag="3")
-            rows = []
-            if rs is None:
-                st.warning(f"获取{name}数据失败，请检查网络或代码")
-            else:
-                while rs.error_code == "0" and rs.next():
-                    rows.append(rs.get_row_data())
-            if rows:
-                df = pd.DataFrame(rows, columns=["date","open","high","low","close","volume"])
-                for c in ["open","high","low","close","volume"]:
-                    df[c] = pd.to_numeric(df[c], errors="coerce")
-                indices_data[name] = df
-        bs.logout()
-    except Exception as e:
-        st.warning(f"数据获取失败: {e}")
+                for code, name in indices:
+                    rs = bs.query_history_k_data_plus(code, "date,open,high,low,close,volume",
+                        start_date=start_d, end_date=end_d, frequency="d", adjustflag="3")
+                    rows = []
+                    if rs is None:
+                        continue
+                    while rs.error_code == "0" and rs.next():
+                        rows.append(rs.get_row_data())
+                    if rows:
+                        df = pd.DataFrame(rows, columns=["date","open","high","low","close","volume"])
+                        for c in ["open","high","low","close","volume"]:
+                            df[c] = pd.to_numeric(df[c], errors="coerce")
+                        indices_data[name] = df
+                bs.logout()
+            except Exception as e:
+                st.error(f"数据获取失败: {e}")
 
-    # ── KPI ──
+    # ── KPI 卡片 ──
     kpi_cards = ""
+    success_count = 0
     for code, name in indices:
         df = indices_data.get(name)
         if df is not None and not df.empty:
+            success_count += 1
             latest = df.iloc[-1]
             prev = df.iloc[-2] if len(df) > 1 else latest
             price = latest["close"]
             chg = (price - prev["close"]) / prev["close"] * 100 if prev["close"] != 0 else 0
-            vol = latest["volume"]
+            vol = latest.get("volume", 0)
             color = "green" if chg >= 0 else "red"
             arrow = "↑" if chg >= 0 else "↓"
             kpi_cards += render_kpi_card(
@@ -599,9 +635,14 @@ def page_market():
                 color, chg/100
             )
         else:
-            kpi_cards += render_kpi_card(name, "—", "数据获取中", "blue")
+            kpi_cards += render_kpi_card(name, "—", "暂无数据", "blue")
 
     st.markdown(f'<div class="kpi-container">{kpi_cards}</div>', unsafe_allow_html=True)
+    
+    if success_count > 0:
+        st.success(f"✅ 成功获取 {success_count}/{len(indices)} 个指数数据")
+    else:
+        st.error("❌ 未能获取任何数据，请检查网络连接")
 
     # ── 大盘走势 ──
     st.markdown('<div class="section-title">📉 大盘近7日走势</div>', unsafe_allow_html=True)
@@ -634,32 +675,32 @@ def page_market():
         )
         st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
-        st.warning(f"图表: {e}")
+        st.warning(f"图表渲染失败: {e}")
 
-    # ── 市场概览 ──
-    st.markdown('<div class="section-title">📊 市场概览</div>', unsafe_allow_html=True)
+    # ── 数据源说明 ──
+    st.markdown('<div class="section-title">📊 数据源说明</div>', unsafe_allow_html=True)
     st.markdown('''
     <div class="glass-card">
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
             <div>
-                <div class="kpi-label">数据来源</div>
-                <div style="color:#e2e8f0;font-weight:600;">BaoStock</div>
-                <div style="color:#475569;font-size:11px;">免费 · 无需注册 · 直连</div>
+                <div class="kpi-label">BaoStock (当前)</div>
+                <div style="color:#e2e8f0;font-weight:600;">免费 · 无需注册</div>
+                <div style="color:#475569;font-size:11px;">直连 · A股+指数</div>
             </div>
             <div>
-                <div class="kpi-label">覆盖市场</div>
-                <div style="color:#e2e8f0;font-weight:600;">A股 + 指数</div>
-                <div style="color:#475569;font-size:11px;">上证 · 深证 · 创业板</div>
+                <div class="kpi-label">聚宽 (可选)</div>
+                <div style="color:#e2e8f0;font-weight:600;">数据更全</div>
+                <div style="color:#475569;font-size:11px;">需注册 · 期货/财务因子</div>
             </div>
             <div>
                 <div class="kpi-label">数据延迟</div>
-                <div style="color:#e2e8f0;font-weight:600;">T+0 盘后</div>
-                <div style="color:#475569;font-size:11px;">交易日15:30后更新</div>
+                <div style="color:#e2e8f0;font-weight:600;">盘后更新</div>
+                <div style="color:#475569;font-size:11px;">交易日15:30后</div>
             </div>
             <div>
-                <div class="kpi-label">复权方式</div>
-                <div style="color:#e2e8f0;font-weight:600;">前复权</div>
-                <div style="color:#475569;font-size:11px;">adjustflag=2</div>
+                <div class="kpi-label">API配置</div>
+                <div style="color:#e2e8f0;font-weight:600;">setup_ai.py</div>
+                <div style="color:#475569;font-size:11px;">一键配置数据源</div>
             </div>
         </div>
     </div>
