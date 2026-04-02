@@ -1,0 +1,38 @@
+{
+  "name": "_auto_fd2ff3757ca24d7090cf3f840f23f4ed",
+  "leadAgentId": "fd2ff3757ca24d7090cf3f840f23f4ed",
+  "workspacePath": "c:\\Users\\Twilight\\WorkBuddy\\20260402170912",
+  "createdAt": "2026-04-02T13:17:47.260Z",
+  "options": {
+    "workspacePath": "c:\\Users\\Twilight\\WorkBuddy\\20260402170912",
+    "isAutoTeam": true
+  },
+  "members": [
+    {
+      "memberId": "team-lead@_auto_fd2ff3757ca24d7090cf3f840f23f4ed",
+      "name": "team-lead",
+      "role": "Team Lead - coordinates the team and interacts with the user"
+    },
+    {
+      "memberId": "ai-model-researcher@_auto_fd2ff3757ca24d7090cf3f840f23f4ed",
+      "name": "ai-model-researcher",
+      "role": "调研免费大模型API"
+    },
+    {
+      "memberId": "quant-researcher@_auto_fd2ff3757ca24d7090cf3f840f23f4ed",
+      "name": "quant-researcher",
+      "role": "调研量化策略开源项目"
+    },
+    {
+      "memberId": "platform-researcher@_auto_fd2ff3757ca24d7090cf3f840f23f4ed",
+      "name": "platform-researcher",
+      "role": "调研策略抓取可行性"
+    },
+    {
+      "memberId": "gh-trending-researcher@_auto_fd2ff3757ca24d7090cf3f840f23f4ed",
+      "name": "gh-trending-researcher",
+      "role": "调研GitHub Trending量化"
+    }
+  ],
+  "isAutoTeam": true
+}

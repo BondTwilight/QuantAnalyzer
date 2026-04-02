@@ -1,0 +1,20 @@
+[
+  {
+    "id": "msg-1775135960959-ls950e",
+    "from": "team-lead",
+    "to": "ai-model-researcher",
+    "type": "message",
+    "content": "请汇报当前调研进度和初步结果",
+    "timestamp": "2026-04-02T13:19:20.959Z",
+    "read": true
+  },
+  {
+    "id": "msg-1775136027107-3rhx27",
+    "from": "team-lead",
+    "to": "ai-model-researcher",
+    "type": "message",
+    "content": "调研完成了没？请把完整结果发给我。",
+    "timestamp": "2026-04-02T13:20:27.107Z",
+    "read": true
+  }
+]
