@@ -482,7 +482,7 @@ classMAStrategy(bt.Strategy):
 
         start_date = st.date_input(
             "开始日期",
-            value=datetime(2023, 1, 1),
+            value=datetime(2015, 1, 1),
             key="home_start"
         )
         end_date = st.date_input(

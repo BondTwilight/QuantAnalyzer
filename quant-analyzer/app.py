@@ -1551,7 +1551,7 @@ def page_settings():
                         "000858.SZ", "601318.SH", "000300.SH"
                     ], key="up_stock", format_func=lambda x: f"{x} {'平安' if x=='601318.SH' else '茅台' if x=='600519.SH' else '沪深300' if x=='000300.SH' else '万科' if x=='000002.SZ' else '浦发' if x=='600000.SH' else '五粮液' if x=='000858.SZ' else '股票'}")
                 with e_col:
-                    up_start = st.date_input("开始", value=datetime(2023,1,1), key="up_start")
+                    up_start = st.date_input("开始", value=datetime(2015,1,1), key="up_start")
                     up_end = st.date_input("结束", value=datetime(2024,12,31), key="up_end")
 
                 if st.button("🚀 **立即回测**", type="primary", use_container_width=True):

@@ -506,7 +506,7 @@ class StrategyB(bt.Strategy):
             ], key="pk_stock",
             format_func=lambda x: {"000001.SZ":"平安银行","000002.SZ":"万科A","600000.SH":"浦发银行","600519.SH":"贵州茅台","000858.SZ":"五粮液","601318.SH":"中国平安","000300.SH":"沪深300"}.get(x, x))
         with p2:
-            start = st.date_input("开始", value=datetime(2023, 1, 1), key="pk_start")
+            start = st.date_input("开始", value=datetime(2015, 1, 1), key="pk_start")
         with p3:
             end = st.date_input("结束", value=datetime(2024, 12, 31), key="pk_end")
 
