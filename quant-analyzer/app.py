@@ -715,7 +715,7 @@ def page_analysis():
     """专业分析页面 - 基于聚宽教程增强"""
     st.title("📈 专业分析")
     
-    tab1, tab2, tab3 = st.tabs(["📊 收益率分析", "📋 财务数据", "📈 风险指标"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 收益率分析", "📋 财务数据", "📈 风险指标", "🔍 策略审查"])
     
     # Tab 1: 收益率分析
     with tab1:
@@ -1041,6 +1041,176 @@ def page_analysis():
             **风险指数**
             综合波动率、回撤、夏普比率计算的综合风险评分。
             """)
+    
+    # Tab 4: 策略逻辑审查
+    with tab4:
+        st.markdown("### 🔍 量化策略逻辑审查")
+        st.markdown("基于【全维量化逻辑审查专家】方法论，检测策略代码中的致命逻辑漏洞")
+        
+        audit_col1, audit_col2 = st.columns([1, 1])
+        
+        with audit_col1:
+            st.markdown("#### 📝 输入策略代码")
+            st.caption("粘贴您的策略代码，系统将自动进行双维度审查")
+            
+            strategy_code = st.text_area(
+                "策略代码",
+                height=400,
+                placeholder="""# 示例策略代码
+def handle_data(context, data):
+    stock = context.portfolio.positions[0]
+    
+    # 获取RSI指标
+    rsi = data[stock].mavg(14, "rsi")
+    
+    # 买入信号
+    if rsi < 30 and cash > 10000:
+        order(stock, 100)
+    
+    # 卖出信号
+    if rsi > 70:
+        order_target_percent(stock, 0)
+    
+    # 止损
+    if returns < -0.03:
+        sell()
+""",
+                key="strategy_code_input"
+            )
+            
+            # 示例代码快捷按钮
+            if st.button("📋 加载示例代码", use_container_width=True):
+                sample_code = '''# 简单均线策略
+def handle_data(context, data):
+    for stock in context.portfolio.positions:
+        # 使用当日收盘价判断
+        if data[stock].close > data[stock].mavg(5):
+            order_target_percent(stock, 0.1)
+        else:
+            order_target_percent(stock, 0)
+
+# 选股
+def before_trading_start(context):
+    stocks = get_stock_list()
+    for s in stocks[:10]:
+        if data[s].close > data[s].mavg(5):
+            buy(s, 10000)
+'''
+                st.session_state.strategy_code_input = sample_code
+            
+            run_audit = st.button("🔍 开始审查", type="primary", use_container_width=True)
+        
+        with audit_col2:
+            st.markdown("#### 📋 审查维度说明")
+            st.markdown("""
+            **维度一：程序逻辑审查** ("把事情做对")
+            - 🔴 T+1 铁律检查
+            - 🔴 涨跌停状态检测
+            - 🟡 停牌股票过滤
+            - 🟡 未来函数检测
+            - 🔵 状态机完整性
+            
+            **维度二：策略逻辑审查** ("做正确的事")
+            - 🟡 指标适用性分析
+            - 🟡 参数敏感性测试
+            - 🟡 过拟合风险评估
+            - 🔵 基准标准化检查
+            """)
+        
+        # 执行审查
+        if run_audit and strategy_code:
+            with st.spinner("正在审查策略逻辑..."):
+                try:
+                    from core.strategy_audit import StrategyAuditor, audit_strategy_code
+                    
+                    # 执行审查
+                    report = audit_strategy_code(strategy_code)
+                    
+                    # 显示评分
+                    st.markdown("---")
+                    st.markdown("### 📊 审查报告")
+                    
+                    score = report["summary"]
+                    grade_col1, grade_col2, grade_col3, grade_col4 = st.columns(4)
+                    
+                    with grade_col1:
+                        grade = score["grade"]
+                        grade_color = "🟢" if "A" in grade else "🟡" if "B" in grade else "🟠" if "C" in grade else "🔴"
+                        st.markdown(f"""
+                        <div style="background: {'#2d7d46' if 'A' in grade else '#c9a227' if 'B' in grade else '#d97706' if 'C' in grade else '#dc2626'}; padding: 20px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 24px; font-weight: bold; color: white;">{grade}</div>
+                            <div style="color: rgba(255,255,255,0.8);">策略评级</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    with grade_col2:
+                        st.metric("总分", f"{score['score']}/100", 
+                                  delta="优秀" if score['score'] >= 80 else "合格" if score['score'] >= 60 else "需改进")
+                    
+                    with grade_col3:
+                        st.metric("致命问题", f"{score['critical']}个", 
+                                  delta="⚠️ 需修复" if score['critical'] > 0 else "✅ 无",
+                                  delta_color="inverse")
+                    
+                    with grade_col4:
+                        st.metric("警告问题", f"{score['warning']}个",
+                                  delta="⚠️ 关注" if score['warning'] > 0 else "✅ 无")
+                    
+                    # 致命问题详情
+                    all_issues = report["program_issues"] + report["strategy_issues"]
+                    critical_issues = [i for i in all_issues if "CRITICAL" in i["severity"]]
+                    warning_issues = [i for i in all_issues if "WARNING" in i["severity"]]
+                    info_issues = [i for i in all_issues if "INFO" in i["severity"]]
+                    
+                    # 致命问题
+                    if critical_issues:
+                        st.markdown("#### 🔴 致命问题 (必须修复)")
+                        for issue in critical_issues:
+                            with st.expander(f"⚠️ {issue['title']}", expanded=True):
+                                st.markdown(f"**位置**: {issue['location']}")
+                                st.markdown(f"**描述**: {issue['description']}")
+                                st.markdown(f"**后果**: {issue['consequence']}")
+                                st.markdown("**修复方案**:")
+                                st.code(issue["fix_diff"], language="diff")
+                                st.markdown(f"**极限推演**: {issue['extreme_scenario']}")
+                    
+                    # 警告问题
+                    if warning_issues:
+                        st.markdown("#### 🟡 警告问题 (建议优化)")
+                        for issue in warning_issues:
+                            with st.expander(f"⚡ {issue['title']}"):
+                                st.markdown(f"**位置**: {issue['location']}")
+                                st.markdown(f"**描述**: {issue['description']}")
+                                st.markdown("**修复方案**:")
+                                st.code(issue["fix_diff"], language="diff")
+                    
+                    # 提示信息
+                    if info_issues:
+                        st.markdown("#### 🔵 优化建议")
+                        for issue in info_issues:
+                            with st.expander(f"💡 {issue['title']}"):
+                                st.markdown(f"**描述**: {issue['description']}")
+                                st.markdown("**建议**:")
+                                st.code(issue["fix_diff"], language="diff")
+                    
+                    # 综合建议
+                    if report["recommendations"]:
+                        st.markdown("---")
+                        st.markdown("#### 🎯 综合建议")
+                        for rec in report["recommendations"]:
+                            st.markdown(f"- {rec}")
+                    
+                    if not all_issues:
+                        st.success("✅ 未发现逻辑问题！策略通过审查。")
+                        st.balloons()
+                        
+                except Exception as e:
+                    st.error(f"审查失败: {e}")
+                    import traceback
+                    st.code(traceback.format_exc())
+        
+        elif run_audit and not strategy_code:
+            st.warning("请先输入策略代码")
 
 
 # ═══════════════════════════════════════════
