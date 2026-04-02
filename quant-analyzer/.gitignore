@@ -21,8 +21,9 @@ env/
 *.swo
 
 # Data
-quant-analyzer/data/*.db
-quant-analyzer/data/*.sqlite
+*.db
+*.sqlite
+*.sqlite3
 quant-analyzer/reports/
 quant-analyzer/uploads/
 
