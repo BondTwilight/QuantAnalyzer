@@ -3,6 +3,15 @@
   "sessions": {
     "fd2ff3757ca24d7090cf3f840f23f4ed": [
       {
+        "expertId": "AiEngineer",
+        "name": "Amy",
+        "profession": "AI工程师",
+        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/AiEngineer/AiEngineer.png",
+        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/AiEngineer/AiEngineer_zh.md",
+        "usedAt": 1775230871563,
+        "industryId": "02-Engineering"
+      },
+      {
         "expertId": "SeniorDeveloper",
         "name": "Will",
         "profession": "高级开发工程师",
@@ -10,15 +19,6 @@
         "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/SeniorDeveloper/SeniorDeveloper_zh.md",
         "usedAt": 1775146301647,
         "industryId": "all"
-      },
-      {
-        "expertId": "AiEngineer",
-        "name": "Amy",
-        "profession": "AI工程师",
-        "avatarUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/avatars/02-Engineering/AiEngineer/AiEngineer.png",
-        "promptUrl": "https://acc-1258344699.cos.accelerate.myqcloud.com/workbuddy/experts/experts/02-Engineering/AiEngineer/AiEngineer_zh.md",
-        "usedAt": 1775141586795,
-        "industryId": "02-Engineering"
       },
       {
         "expertId": "FrontendDeveloper",
@@ -31,5 +31,5 @@
       }
     ]
   },
-  "lastUpdated": 1775147049480
+  "lastUpdated": 1775233397111
 }
