@@ -1,9 +1,15 @@
 streamlit>=1.30.0
 backtrader>=1.9.78.123
 baostock>=0.8.8
+akshare>=1.14.0
 pandas>=2.0.0
 numpy>=1.24.0
 plotly>=5.15.0
 openpyxl>=3.1.0
 requests>=2.28.0
 apscheduler>=3.10.0
+# 可选依赖
+# pyqlib>=0.9.6       # Qlib因子库（可选，高级功能）
+# shioaji>=0.16.0     # 永丰证券API（可选）
+# vnpy>=2.14.0        # vn.py实盘（可选）
+# talib-binary>=0.2.3 # TA-Lib加速（可选，Windows安装较复杂）

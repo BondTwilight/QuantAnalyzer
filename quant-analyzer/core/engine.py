@@ -46,8 +46,16 @@ class BacktestEngine:
                 data_feed[col] = data_feed.get("close", 0)
             data_feed[col] = pd.to_numeric(data_feed[col], errors="coerce").fillna(0)
 
+        df = data_feed.copy()
+        # 确保 date 列作为 DatetimeIndex
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"])
+            df = df.set_index("date")
+        elif not isinstance(df.index, pd.DatetimeIndex):
+            df.index = pd.to_datetime(df.index)
+
         bt_data = bt.feeds.PandasData(
-            dataname=data_feed.copy(),
+            dataname=df,
             datetime=None,
             open="open", high="high", low="low", close="close", volume="volume",
             openinterest=-1,

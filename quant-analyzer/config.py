@@ -60,151 +60,81 @@ SECTORS = {
 #   Tier 2 — 需要免费注册获取API Key
 #   Tier 3 — 付费或有限免费额度
 
+# ══════════════════════════════════════════════
+# 🤖 AI 模型配置 — 已接入智谱GLM
+# ══════════════════════════════════════════════
+
+# 智谱API Key（已配置）
+ZHIPU_API_KEY = "f73b954ee7ea4e5e9f524130827628c7.pH5VtxD5rUe71JzQ"
+
 AI_MODELS = {
-    # ═══ 精选Tier 1: 完全免费无限制 ═══
-    "cerebras": {
-        "name": "🔥 Cerebras (Llama 3.3 70B)",
+    # ═══ 主力模型: 智谱GLM（已配置Key，直接可用） ═══
+    "glm-5": {
+        "name": "🧠 智谱 GLM-5（旗舰）",
         "tier": 1,
-        "api_base": "https://api.cerebras.ai/v1",
-        "api_key": os.getenv("CEREBRAS_API_KEY", ""),
-        "model": "llama-3.3-70b",
-        "env_key": "CEREBRAS_API_KEY",
-        "rate_limit": "✅ 完全免费无限制",
-        "needs_key": True,
-        "key_url": "https://cloud.cerebras.ai/",
-        "desc": "免费无限制! 极速推理70B大模型",
+        "api_base": "https://open.bigmodel.cn/api/paas/v4",
+        "api_key": ZHIPU_API_KEY,
+        "model": "glm-5",
+        "env_key": "ZHIPU_API_KEY",
+        "rate_limit": "200K上下文，128K输出",
+        "needs_key": False,
+        "key_url": "https://open.bigmodel.cn/",
+        "desc": "旗舰模型！复杂分析/策略审查用",
         "compatible": "openai",
         "recommended": True,
     },
-    
-    # ═══ 精选Tier 2: 免费注册可用 ═══
-    "zhipu": {
-        "name": "⭐ 智谱 GLM-4-Flash (推荐)",
-        "tier": 2,
+    "glm-turbo": {
+        "name": "⚡ 智谱 GLM-Turbo（快速）",
+        "tier": 1,
         "api_base": "https://open.bigmodel.cn/api/paas/v4",
-        "api_key": os.getenv("ZHIPU_API_KEY", ""),
+        "api_key": ZHIPU_API_KEY,
         "model": "glm-4-flash",
         "env_key": "ZHIPU_API_KEY",
-        "rate_limit": "免费, 25 RPM",
-        "needs_key": True,
+        "rate_limit": "免费，25 RPM",
+        "needs_key": False,
         "key_url": "https://open.bigmodel.cn/",
-        "desc": "国产首选! 中文理解强，免费额度",
+        "desc": "快速模型！日常分析/批量任务用",
         "compatible": "openai",
         "recommended": True,
-    },
-    "groq": {
-        "name": "⚡ Groq (Llama 3.3 70B)",
-        "tier": 2,
-        "api_base": "https://api.groq.com/openai/v1",
-        "api_key": os.getenv("GROQ_API_KEY", ""),
-        "model": "llama-3.3-70b-versatile",
-        "env_key": "GROQ_API_KEY",
-        "rate_limit": "30 RPM / 6K TPM",
-        "needs_key": True,
-        "key_url": "https://console.groq.com/keys",
-        "desc": "超快推理! 免费额度慷慨",
-        "compatible": "openai",
-        "recommended": True,
-    },
-    "siliconflow": {
-        "name": "🇨🇳 SiliconFlow (Qwen 2.5)",
-        "tier": 2,
-        "api_base": "https://api.siliconflow.cn/v1",
-        "api_key": os.getenv("SILICONFLOW_API_KEY", ""),
-        "model": "Qwen/Qwen2.5-72B-Instruct",
-        "env_key": "SILICONFLOW_API_KEY",
-        "rate_limit": "14元/天免费额度",
-        "needs_key": True,
-        "key_url": "https://cloud.siliconflow.cn/",
-        "desc": "国内首选! 多模型可选",
-        "compatible": "openai",
-        "recommended": False,
-    },
-    "deepseek": {
-        "name": "🧠 DeepSeek V3",
-        "tier": 2,
-        "api_base": "https://api.deepseek.com/v1",
-        "api_key": os.getenv("DEEPSEEK_API_KEY", ""),
-        "model": "deepseek-chat",
-        "env_key": "DEEPSEEK_API_KEY",
-        "rate_limit": "新用户500万token免费",
-        "needs_key": True,
-        "key_url": "https://platform.deepseek.com/",
-        "desc": "推理能力强! 新用户送大量额度",
-        "compatible": "openai",
-        "recommended": False,
-    },
-    
-    # ═══ Tier 3: 高级付费模型 ═══
-    "google-gemini": {
-        "name": "🤖 Google Gemini 2.0 Flash",
-        "tier": 3,
-        "api_base": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "api_key": os.getenv("GOOGLE_API_KEY", ""),
-        "model": "gemini-2.0-flash",
-        "env_key": "GOOGLE_API_KEY",
-        "rate_limit": "15 RPM / 1M TPM",
-        "needs_key": True,
-        "key_url": "https://aistudio.google.com/apikey",
-        "desc": "Google免费! 最强免费模型之一",
-        "compatible": "openai",
-        "recommended": False,
-    },
-    "openai": {
-        "name": "💎 OpenAI GPT-4o-mini",
-        "tier": 3,
-        "api_base": "https://api.openai.com/v1",
-        "api_key": os.getenv("OPENAI_API_KEY", ""),
-        "model": "gpt-4o-mini",
-        "env_key": "OPENAI_API_KEY",
-        "rate_limit": "付费",
-        "needs_key": True,
-        "key_url": "https://platform.openai.com/api-keys",
-        "desc": "OpenAI官方! 顶级推理能力",
-        "compatible": "openai",
-        "recommended": False,
     },
 }
 
-# 默认使用的模型 (按优先级排序, 自动尝试)
+# 默认使用的模型 (按优先级排序)
 DEFAULT_MODEL_PRIORITY = [
-    "cerebras",     # 🔥 完全免费无限制首选
-    "zhipu",        # ⭐ 国产免费首选
-    "groq",         # ⚡ 超快推理
-    "siliconflow",  # 🇨🇳 国内首选
-    "deepseek",     # 🧠 推理能力强
+    "glm-turbo",    # ⚡ 日常分析用快速模型（免费）
+    "glm-5",       # 🧠 复杂分析用旗舰模型
 ]
 
 # 协同分析配置: 哪些任务用哪些模型
 ANALYSIS_TASKS = {
     "strategy_code_parse": {
         "description": "策略代码解析",
-        "models": ["zhipu", "deepseek", "groq"],  # 3模型并行
+        "models": ["glm-turbo"],
         "temperature": 0.3,
     },
     "backtest_analysis": {
         "description": "回测结果分析",
-        "models": ["deepseek", "google-gemini", "qwen"],  # 深度分析
+        "models": ["glm-turbo"],
         "temperature": 0.5,
     },
     "strategy_comparison": {
         "description": "策略对比",
-        "models": ["zhipu", "groq", "moonshot"],
+        "models": ["glm-5"],
         "temperature": 0.4,
     },
     "market_sentiment": {
-        "description": "市场情绪分析",
-        "models": ["deepseek", "qwen", "moonshot"],
+        "description": "市场研判",
+        "models": ["glm-turbo"],
         "temperature": 0.6,
     },
     "auto_learning": {
         "description": "自学习进化",
-        "models": ["deepseek", "google-gemini", "qwen"],
+        "models": ["glm-5"],
         "temperature": 0.8,
     },
     "investment_advice": {
         "description": "投资建议",
-        "models": ["deepseek", "google-gemini"],
+        "models": ["glm-5"],
         "temperature": 0.3,
     },
 }

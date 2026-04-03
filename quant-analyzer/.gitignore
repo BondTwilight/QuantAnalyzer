@@ -20,16 +20,20 @@ env/
 *.swp
 *.swo
 
-# Data
+# Data (本地数据不同步到云，通过 GitHub Storage API 管理)
 *.db
 *.sqlite
 *.sqlite3
-quant-analyzer/reports/
-quant-analyzer/uploads/
+
+# 运行时文件
+cache/
+logs/
+reports/
+uploads/
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Streamlit
+# Streamlit secrets
 .streamlit/secrets.toml
