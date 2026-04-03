@@ -160,14 +160,36 @@ class LearningRecord:
 class DataProvider:
     """股票数据统一接口"""
 
-    @staticmethod
-    def get_stock_daily(stock_code: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
-        """获取股票日K数据 (BaoStock备用)"""
-        try:
+    _bs_logged_in = False
+
+    @classmethod
+    def _bs_login(cls):
+        """BaoStock 连接复用，避免每次都 login/logout"""
+        if not cls._bs_logged_in:
             import baostock as bs
             lg = bs.login()
             if lg.error_code != '0':
                 logger.warning(f"BaoStock login failed: {lg.error_msg}")
+            cls._bs_logged_in = True
+        return cls._bs_logged_in
+
+    @classmethod
+    def _bs_logout(cls):
+        """仅在应用退出时 logout"""
+        if cls._bs_logged_in:
+            try:
+                import baostock as bs
+                bs.logout()
+            except:
+                pass
+            cls._bs_logged_in = False
+
+    @staticmethod
+    def get_stock_daily(stock_code: str, start_date: str = None, end_date: str = None, days: int = None) -> pd.DataFrame:
+        """获取股票日K数据 (BaoStock备用)"""
+        try:
+            import baostock as bs
+            if not DataProvider._bs_login():
                 return pd.DataFrame()
 
             # 标准化代码格式
@@ -182,7 +204,8 @@ class DataProvider:
             if not end_date:
                 end_date = datetime.now().strftime("%Y-%m-%d")
             if not start_date:
-                start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+                lookback = days or 365
+                start_date = (datetime.now() - timedelta(days=lookback)).strftime("%Y-%m-%d")
 
             rs = bs.query_history_k_data_plus(
                 code,
@@ -209,8 +232,6 @@ class DataProvider:
                     except (ValueError, IndexError):
                         continue
 
-            bs.logout()
-
             if not data_rows:
                 return pd.DataFrame()
 
@@ -225,10 +246,17 @@ class DataProvider:
 
     @staticmethod
     def get_stock_info(stock_code: str) -> Dict:
-        """获取股票基本信息"""
+        """获取股票基本信息（带缓存）"""
+        # 缓存股票名称，避免重复查询
+        if not hasattr(DataProvider, '_name_cache'):
+            DataProvider._name_cache = {}
+        if stock_code in DataProvider._name_cache:
+            return DataProvider._name_cache[stock_code]
+
         try:
             import baostock as bs
-            lg = bs.login()
+            if not DataProvider._bs_login():
+                return {"code": stock_code, "name": stock_code}
             code = stock_code.replace(".SZ", "").replace(".SH", "")
             if code.startswith("6"):
                 code = f"sh.{code}"
@@ -248,7 +276,9 @@ class DataProvider:
                         "type": row[4] if len(row) > 4 else "",
                         "status": row[5] if len(row) > 5 else "",
                     }
-            bs.logout()
+            if not data:
+                data = {"code": stock_code, "name": stock_code}
+            DataProvider._name_cache[stock_code] = data
             return data
         except:
             return {"code": stock_code, "name": stock_code}
@@ -425,7 +455,6 @@ class SignalGenerator:
         # 用最后一根有效数据行（跳过可能有NaN的前几行）
         data = data.dropna(subset=["rsi", "macd_hist", "ma_20", "ma_60"], how="any").reset_index(drop=True)
         if len(data) < 3:
-            return []
             return []
 
         signals = []
@@ -936,11 +965,16 @@ class PortfolioTracker:
         return None
 
     def update_prices(self):
-        """更新持仓最新价格"""
-        for pos in self.positions:
-            data = DataProvider.get_stock_daily(pos.stock_code, days=5)
+        """更新持仓最新价格（批量获取，减少BaoStock请求）"""
+        codes = list(set(p.stock_code for p in self.positions))
+        price_map = {}
+        for code in codes:
+            data = DataProvider.get_stock_daily(code, days=5)
             if not data.empty:
-                pos.current_price = float(data.iloc[-1]["close"])
+                price_map[code] = float(data.iloc[-1]["close"])
+        for pos in self.positions:
+            if pos.stock_code in price_map:
+                pos.current_price = price_map[pos.stock_code]
         self._save_data()
 
     def get_summary(self) -> Dict:

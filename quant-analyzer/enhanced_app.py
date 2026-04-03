@@ -268,89 +268,253 @@ if page == "📊 信号仪表盘":
 
 
 # ═══════════════════════════════════════════════
-# 页面2: 每日扫描
+# 页面2: 每日扫描（增强版）
 # ═══════════════════════════════════════════════
 elif page == "📡 每日扫描":
     st.markdown('<div class="page-title">📡 每日扫描</div>', unsafe_allow_html=True)
     st.markdown('<div class="page-subtitle">AI扫描自选股，自动生成买卖信号</div>', unsafe_allow_html=True)
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        watchlist = brain.get_watchlist_stocks()
-        stock_input = st.text_area(
-            "自选股列表（一行一个股票代码）",
-            value="\n".join(watchlist),
-            height=200,
-        )
-    with col2:
-        st.markdown("### 扫描设置")
-        scan_days = st.slider("回看天数", 30, 365, 120)
-        min_confidence = st.slider("最低置信度", 40, 90, 60)
-        st.markdown("---")
-        st.markdown("### 策略说明")
-        st.caption("• 多信号共振: RSI+MACD+均线\n• 突破策略: N日新高突破\n• 布林带回归: 触及上下轨\n• 放量突破: 量价齐升\n• 动量反转: 超跌反弹")
+    scan_tab1, scan_tab2, scan_tab3 = st.tabs(["🔍 智能扫描", "📊 市场概览", "⚡ 批量操作"])
 
-    scan_clicked = st.button("🚀 开始扫描", type="primary", use_container_width=True) or st.session_state.get("quick_scan")
-    if "quick_scan" in st.session_state:
-        st.session_state.pop("quick_scan")
-
-    if scan_clicked:
-        stocks = [s.strip() for s in stock_input.strip().split("\n") if s.strip()]
-        if not stocks:
-            st.warning("请输入股票代码")
-        else:
-            brain.save_watchlist(stocks)
-            progress = st.progress(0, text="正在扫描...")
-            signals = brain.signal_gen.scan_stocks(
-                stocks,
-                progress_cb=lambda p, t: progress.progress(p, text=t)
+    with scan_tab1:
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            watchlist = brain.get_watchlist_stocks()
+            stock_input = st.text_area(
+                "自选股列表（一行一个股票代码）",
+                value="\n".join(watchlist),
+                height=200,
             )
-            progress.empty()
+        with col2:
+            st.markdown("### 扫描设置")
+            scan_days = st.slider("回看天数", 30, 365, 120)
+            min_confidence = st.slider("最低置信度", 40, 90, 60)
 
-            # 过滤
-            signals = [s for s in signals if s.confidence >= min_confidence]
+            st.markdown("---")
+            st.markdown("### 🔥 快捷添加")
+            preset_lists = {
+                "蓝筹白马": ["600519", "000858", "600036", "601318", "000333",
+                             "601888", "600276", "000568", "601166", "600887"],
+                "科技龙头": ["002415", "300750", "002230", "603501", "688981",
+                             "300059", "002475", "300782", "002371", "603019"],
+                "新能源": ["300014", "002594", "601012", "600438", "002129",
+                           "300274", "600905", "002074", "300750", "688599"],
+                "医药消费": ["600276", "000538", "300015", "002007", "300347",
+                            "000661", "603259", "002821", "300760", "688185"],
+            }
+            preset_name = st.selectbox("热门组合", list(preset_lists.keys()))
+            if st.button(f"添加{preset_name}组合", use_container_width=True):
+                current = [s.strip() for s in stock_input.strip().split("\n") if s.strip()]
+                combined = list(set(current + preset_lists[preset_name]))
+                stock_input = "\n".join(combined)
+                st.rerun()
 
-            if signals:
-                st.success(f"✅ 扫描完成！发现 **{len(signals)}** 个信号（置信度 ≥ {min_confidence}%）")
+            st.markdown("---")
+            st.markdown("### 策略说明")
+            st.caption("• **多信号共振**: RSI+MACD+均线三重确认\n"
+                      "• **突破策略**: N日新高/低突破\n"
+                      "• **布林带回归**: 触及上下轨反弹\n"
+                      "• **放量突破**: 量价齐升突破均线\n"
+                      "• **动量反转**: 超跌反弹+放量\n"
+                      "• **趋势跟踪**: 多头排列+MACD正向")
 
-                # 信号详情
-                for sig in signals:
-                    dir_class = "signal-buy" if sig.direction == "BUY" else "signal-sell"
-                    dir_tag = "tag-buy" if sig.direction == "BUY" else "tag-sell"
-                    dir_text = "🟢 买入" if sig.direction == "BUY" else "🔴 卖出"
+        scan_clicked = st.button("🚀 开始扫描", type="primary", use_container_width=True) or st.session_state.get("quick_scan")
+        if "quick_scan" in st.session_state:
+            st.session_state.pop("quick_scan")
 
-                    col_sig, col_act = st.columns([3, 1])
-                    with col_sig:
-                        st.markdown(f"""
-                        <div class="signal-card {dir_class}">
-                            <div style="display:flex;justify-content:space-between;">
-                                <div>
-                                    <span class="tag {dir_tag}">{dir_text}</span>
-                                    <span class="tag tag-strategy">{sig.strategy_name}</span>
-                                    <span style="color:#f59e0b;">{sig.confidence}%</span>
-                                </div>
-                                <div style="font-weight:600;">{sig.stock_name or sig.stock_code}</div>
-                            </div>
-                            <div style="color:#94a3b8;font-size:13px;margin-top:6px;">{sig.reason}</div>
-                            <div style="color:#64748b;font-size:12px;margin-top:4px;">
-                                信号价 ¥{sig.price:.2f} | 止损 ¥{sig.stop_loss:.2f} | 目标 ¥{sig.target_price:.2f}
-                            </div>
-                        </div>""", unsafe_allow_html=True)
-                    with col_act:
-                        if sig.direction == "BUY":
-                            if st.button("确认买入", key=f"buy_{sig.id}", use_container_width=True):
-                                brain.portfolio.execute_buy(sig)
-                                st.success(f"✅ 已买入 {sig.stock_code}")
-                                st.rerun()
-
-                # 保存并触发AI学习
-                for sig in signals:
-                    brain.portfolio.add_signal(sig)
-
-                st.info("💡 信号已保存，AI正在后台分析信号质量并学习优化...")
-
+        if scan_clicked:
+            stocks = [s.strip() for s in stock_input.strip().split("\n") if s.strip()]
+            if not stocks:
+                st.warning("请输入股票代码")
             else:
-                st.info("没有发现符合条件的信号。可以降低置信度阈值再试试。")
+                brain.save_watchlist(stocks)
+                progress = st.progress(0, text="正在扫描...")
+                signals = brain.signal_gen.scan_stocks(
+                    stocks,
+                    progress_cb=lambda p, t: progress.progress(p, text=t)
+                )
+                progress.empty()
+
+                # 过滤
+                signals = [s for s in signals if s.confidence >= min_confidence]
+
+                if signals:
+                    # 信号统计
+                    buy_sigs = [s for s in signals if s.direction == "BUY"]
+                    sell_sigs = [s for s in signals if s.direction == "SELL"]
+
+                    # 统计卡片
+                    sc1, sc2, sc3, sc4 = st.columns(4)
+                    sc1.metric("总信号数", len(signals))
+                    sc2.metric("买入信号", len(buy_sigs), "🟢")
+                    sc3.metric("卖出信号", len(sell_sigs), "🔴")
+                    sc4.metric("平均置信度", f"{sum(s.confidence for s in signals)/len(signals):.0f}%")
+
+                    st.markdown("---")
+
+                    # 买入信号
+                    if buy_sigs:
+                        st.markdown("### 🟢 买入信号")
+                        for sig in buy_sigs:
+                            col_sig, col_act = st.columns([3, 1])
+                            with col_sig:
+                                st.markdown(f"""
+                                <div class="signal-card signal-buy">
+                                    <div style="display:flex;justify-content:space-between;">
+                                        <div>
+                                            <span class="tag tag-buy">买入</span>
+                                            <span class="tag tag-strategy">{sig.strategy_name}</span>
+                                            <span class="tag tag-ai">置信度 {sig.confidence}%</span>
+                                        </div>
+                                        <div style="font-weight:600;font-size:16px;">{sig.stock_name or sig.stock_code}</div>
+                                    </div>
+                                    <div style="color:#94a3b8;font-size:13px;margin-top:6px;">{sig.reason}</div>
+                                    <div style="display:flex;gap:16px;color:#64748b;font-size:12px;margin-top:6px;">
+                                        <span>信号价 <b style="color:#f8fafc">¥{sig.price:.2f}</b></span>
+                                        <span>止损 <b style="color:#ef4444">¥{sig.stop_loss:.2f}</b></span>
+                                        <span>目标 <b style="color:#10b981">¥{sig.target_price:.2f}</b></span>
+                                        <span>盈亏比 <b style="color:#f59e0b">{(sig.target_price-sig.price)/(sig.price-sig.stop_loss):.1f}R</b></span>
+                                    </div>
+                                </div>""", unsafe_allow_html=True)
+                            with col_act:
+                                if st.button("确认买入", key=f"buy_{sig.id}", use_container_width=True):
+                                    brain.portfolio.execute_buy(sig)
+                                    st.success(f"✅ 已买入 {sig.stock_code}")
+                                    st.rerun()
+
+                    # 卖出信号
+                    if sell_sigs:
+                        st.markdown("### 🔴 卖出信号")
+                        for sig in sell_sigs:
+                            st.markdown(f"""
+                            <div class="signal-card signal-sell">
+                                <div style="display:flex;justify-content:space-between;align-items:center;">
+                                    <div>
+                                        <span class="tag tag-sell">卖出</span>
+                                        <span class="tag tag-strategy">{sig.strategy_name}</span>
+                                        <span class="tag tag-ai">{sig.confidence}%</span>
+                                    </div>
+                                    <div style="font-weight:600;">{sig.stock_name or sig.stock_code}</div>
+                                </div>
+                                <div style="color:#94a3b8;font-size:13px;margin-top:6px;">{sig.reason}</div>
+                                <div style="color:#64748b;font-size:12px;margin-top:4px;">
+                                    信号价 ¥{sig.price:.2f} | {sig.created_at}
+                                </div>
+                            </div>""", unsafe_allow_html=True)
+
+                    # 保存并触发AI学习
+                    for sig in signals:
+                        brain.portfolio.add_signal(sig)
+
+                    # 一键买入所有
+                    if buy_sigs:
+                        st.markdown("---")
+                        bc1, bc2 = st.columns([1, 1])
+                        with bc1:
+                            if st.button(f"⚡ 一键买入全部（{len(buy_sigs)}只）", type="primary", use_container_width=True):
+                                count = 0
+                                for sig in buy_sigs:
+                                    try:
+                                        brain.portfolio.execute_buy(sig)
+                                        count += 1
+                                    except:
+                                        pass
+                                st.success(f"✅ 成功买入 {count} 只股票！")
+                                st.rerun()
+                        with bc2:
+                            st.info("💡 信号已保存，AI正在后台分析信号质量并学习优化...")
+
+                else:
+                    st.info("没有发现符合条件的信号。可以：\n- 降低置信度阈值\n- 增加自选股数量\n- 更换热门组合")
+
+    with scan_tab2:
+        """市场概览 — 快速了解大盘走势"""
+        st.markdown("### 📊 市场概览")
+        st.caption("主要指数实时走势")
+
+        indices = {
+            "上证指数": "sh.000001",
+            "深证成指": "sz.399001",
+            "创业板指": "sz.399006",
+            "沪深300": "sh.000300",
+            "中证500": "sh.000905",
+        }
+
+        idx_cols = st.columns(5)
+        for i, (name, code) in enumerate(indices.items()):
+            with idx_cols[i]:
+                try:
+                    data = DataProvider.get_stock_daily(code.replace("sh.", "0000").replace("sz.", "0000"), days=10)
+                    if not data.empty:
+                        latest = data.iloc[-1]
+                        prev = data.iloc[-2] if len(data) > 1 else latest
+                        pct = (latest["close"] - prev["close"]) / prev["close"] * 100
+                        color = "#10b981" if pct >= 0 else "#ef4444"
+                        sign = "+" if pct >= 0 else ""
+                        st.markdown(f"""
+                        <div class="metric-card" style="text-align:center;">
+                            <div class="metric-label">{name}</div>
+                            <div style="font-size:20px;font-weight:700;color:{color};">
+                                {latest['close']:.2f}
+                            </div>
+                            <div style="color:{color};font-size:13px;">{sign}{pct:.2f}%</div>
+                        </div>""", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"**{name}**: 数据加载失败")
+                except Exception:
+                    st.markdown(f"**{name}**: 加载中...")
+
+        st.markdown("---")
+        st.markdown("### 📋 涨停跌停监控")
+        st.caption("基于最新数据的热门异动股票")
+        hot_stocks = ["600519", "000858", "300750", "601318", "002594",
+                      "600036", "000333", "300059", "002415", "688981",
+                      "601012", "600438", "300014", "002230", "603501"]
+        if st.button("🔍 扫描热门股异动", use_container_width=True):
+            with st.spinner("扫描异动中..."):
+                hot_signals = brain.signal_gen.scan_stocks(hot_stocks)
+                if hot_signals:
+                    for sig in hot_signals[:10]:
+                        dir_emoji = "🟢" if sig.direction == "BUY" else "🔴"
+                        st.markdown(f"{dir_emoji} **{sig.stock_name}({sig.stock_code})** — {sig.strategy_name} — 置信度{sig.confidence}% — {sig.reason[:80]}")
+                else:
+                    st.info("暂无异动信号")
+
+    with scan_tab3:
+        """批量操作"""
+        st.markdown("### ⚡ 批量操作")
+
+        st.markdown("#### 一键卖出所有持仓")
+        positions = brain.portfolio.positions
+        if positions:
+            st.warning(f"当前持有 {len(positions)} 只股票，卖出将全部平仓")
+            if st.button("🗑️ 确认全部卖出", type="secondary", use_container_width=True):
+                for pos in positions:
+                    brain.portfolio.execute_sell(pos.stock_code)
+                st.success("✅ 已全部卖出！")
+                st.rerun()
+        else:
+            st.info("当前没有持仓")
+
+        st.markdown("---")
+        st.markdown("#### 智能止损")
+        st.caption("自动卖出亏损超过阈值的持仓")
+        stop_loss_pct = st.slider("止损阈值", 2, 20, 8, format="%d%%")
+        if positions:
+            loss_positions = [p for p in positions if p.profit_pct < -stop_loss_pct]
+            if loss_positions:
+                st.error(f"⚠️ {len(loss_positions)} 只持仓亏损超过 {stop_loss_pct}%")
+                for p in loss_positions:
+                    st.markdown(f"- **{p.stock_name}({p.stock_code})** 亏损 {p.profit_pct}%")
+                if st.button(f"🛡️ 止损卖出（{len(loss_positions)}只）", type="secondary", use_container_width=True):
+                    for p in loss_positions:
+                        brain.portfolio.execute_sell(p.stock_code)
+                    st.success("✅ 止损完成")
+                    st.rerun()
+            else:
+                st.success(f"✅ 所有持仓亏损都在 {stop_loss_pct}% 以内")
+        else:
+            st.info("当前没有持仓")
 
 
 # ═══════════════════════════════════════════════
@@ -792,8 +956,15 @@ print(df.head())
         st.warning("⚠️ 如果遇到代理错误(ProxyError)，需要: 1)关闭系统代理 2)或设置NO_PROXY环境变量")
 
     with tab_set3:
-        st.markdown("### 公网访问配置")
-        st.info("通过内网穿透工具将本机Streamlit服务暴露到公网")
+        st.markdown("### ☁️ HuggingFace Spaces（当前部署）")
+        st.success("✅ 已部署到 HuggingFace Spaces")
+        st.markdown(f"👉 **[打开 QuantBrain](https://bondtwilight-quantbrain.hf.space)**")
+        st.caption("• 2 vCPU / 16GB RAM / 50GB 存储（免费）\n"
+                 "• 数据通过 GitHub 仓库持久化\n"
+                 "• 代码更新后自动重新部署")
+
+        st.markdown("---")
+        st.markdown("### 本地内网穿透（备用）")
 
         st.markdown("#### 方法1: Ngrok（推荐，最简单）")
         st.code("""

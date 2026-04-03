@@ -140,34 +140,41 @@ class GitHubStorage:
         return None
 
     def save_json(self, filename: str, data: Dict) -> bool:
-        """保存 JSON 到 GitHub"""
+        """保存 JSON 到 GitHub（异步化，不阻塞主流程）"""
         if not self.available:
             return False
 
         content = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
         remote_path = f"{self.data_path}/{filename}"
 
-        # 获取当前 SHA（用于更新）
-        sha = None
-        existing = self._api_get(remote_path)
-        if existing and "sha" in existing:
-            sha = existing["sha"]
+        # 更新内存缓存
+        self._cache[filename] = data
 
-        # 检查内容是否有变化
-        if existing and "content" in existing:
-            existing_content = base64.b64decode(existing["content"])
-            if existing_content == content:
-                self._cache[filename] = data
-                return True  # 没变化，跳过
+        # 跳过未变化的保存
+        if self._cache.get("_etag_" + filename) == hashlib.md5(content).hexdigest():
+            return True
 
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        message = f"[QuantBrain] Update {filename} - {timestamp}"
-
-        success = self._api_put(remote_path, content, message, sha)
-        if success:
-            self._cache[filename] = data
+        # 异步保存到 GitHub，不阻塞
+        import threading
+        def _async_save():
+            sha = None
+            existing = self._api_get(remote_path)
+            if existing and "sha" in existing:
+                sha = existing["sha"]
+            # 再检查内容是否有变化
+            if existing and "content" in existing:
+                existing_content = base64.b64decode(existing["content"])
+                if existing_content == content:
+                    return
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            message = f"[QuantBrain] Update {filename} - {timestamp}"
+            self._api_put(remote_path, content, message, sha)
+            self._cache["_etag_" + filename] = hashlib.md5(content).hexdigest()
             logger.info(f"已同步到 GitHub: {filename}")
-        return success
+
+        t = threading.Thread(target=_async_save, daemon=True)
+        t.start()
+        return True
 
     def init_cloud_data(self, local_data_dir: str = "data") -> None:
         """初始化云数据：将本地 JSON 文件同步到 GitHub（仅首次）"""

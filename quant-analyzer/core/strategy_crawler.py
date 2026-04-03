@@ -33,6 +33,7 @@ class CrawledStrategy:
     stars: int = 0
     language: str = "python"
     framework: str = "backtrader"  # backtrader/jqdata/pseudocode
+    author: str = "社区"
     tags: List[str] = None
     factors: List[str] = None  # 检测到的量化因子
     quality_score: float = 0.0  # 策略质量评分
