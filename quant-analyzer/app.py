@@ -309,6 +309,7 @@ def render_sidebar():
             "🧠 代码分析",
             "🏦 市场看板",
             "📈 专业分析",
+            "🔮 AI预测",
             "📉 K线分析",
             "📋 交易明细",
             "🗓️ 收益日历",
@@ -1214,8 +1215,436 @@ def before_trading_start(context):
 
 
 # ═══════════════════════════════════════════
-# 页面3: K线分析（新增）
+# 页面: AI预测 (G-Prophet集成)
 # ═══════════════════════════════════════════
+def page_ai_predict():
+    """AI预测页面 - 基于G-Prophet API"""
+    st.title("🔮 AI 预测分析")
+    st.markdown("基于 **G-Prophet** AI量化平台，提供蒙特卡洛模拟、LSTM、Transformer等多种算法的股票预测")
+    
+    # 检查API Key
+    import os
+    from dotenv import load_dotenv
+    load_dotenv()
+    
+    api_key = os.getenv("GPROPHET_API_KEY", "")
+    
+    if not api_key:
+        st.markdown("""
+        ### 🔑 配置 G-Prophet API Key
+        
+        G-Prophet 提供 AI 驱动的股票预测与市场分析，支持以下功能：
+        
+        | 功能 | 说明 | 点数消耗 |
+        |------|------|---------|
+        | **AI价格预测** | 蒙特卡洛/LSTM/Transformer多算法预测 | 10-20点 |
+        | **多算法对比** | 多算法交叉验证预测结果 | 40-80点 |
+        | **技术分析** | RSI/MACD/布林带/KDJ信号 | 5点 |
+        | **AI股票分析** | 单股票深度分析报告 | 58点 |
+        | **5维深度分析** | 技术+基本面+资金+情绪+宏观 | 150点 |
+        | **市场情绪** | 恐惧贪婪指数/市场概览 | 5点 |
+        
+        **如何获取 API Key:**
+        1. 访问 [G-Prophet](https://www.gprophet.com) 注册账号
+        2. 前往 设置 → API Keys 创建密钥
+        3. 在本项目的 `.env` 文件中添加:
+        ```
+        GPROPHET_API_KEY=gp_sk_你的密钥
+        ```
+        
+        > 💡 **免费体验**: 每日签到可得30积分，注册即可使用核心预测功能
+        > 
+        > 📖 **G-Prophet方法论**: 基于蒙特卡洛模拟的市场状态识别系统，从价格预测到概率建模
+        """)
+        return
+    
+    # API Key 已配置
+    try:
+        from data.gprophet import GProphetClient, MARKETS, ALGORITHMS, TECHNICAL_INDICATORS, POINTS_COST
+        client = GProphetClient(api_key)
+        
+        # 查询余额
+        balance = client.get_balance()
+        if balance and balance.get("success"):
+            bd = balance["data"]
+            available = bd.get("available_points", 0)
+            daily_used = bd.get("daily_used", 0)
+            daily_quota = bd.get("daily_quota", 0)
+            
+            bal_col1, bal_col2, bal_col3 = st.columns(3)
+            with bal_col1:
+                st.metric("💎 可用点数", f"{available}")
+            with bal_col2:
+                st.metric("📊 今日已用", f"{daily_used}")
+            with bal_col3:
+                quota_pct = (daily_used / daily_quota * 100) if daily_quota > 0 else 0
+                st.metric("📈 日配额", f"{quota_pct:.0f}%")
+            st.markdown("---")
+    
+    except Exception as e:
+        st.error(f"G-Prophet API 连接失败: {e}")
+        st.info("请检查 API Key 是否正确，以及网络是否可以访问 gprophet.com")
+        return
+    
+    # Tab 页面
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "🤖 AI预测", "⚡ 多算法对比", 
+        "📊 技术分析", "🧠 AI报告", "🌐 市场情绪"
+    ])
+    
+    # Tab 1: AI 预测
+    with tab1:
+        st.markdown("### 🤖 AI 价格预测")
+        st.caption("基于蒙特卡洛模拟/LSTM/Transformer等算法，预测股票未来价格走势")
+        
+        pred_col1, pred_col2 = st.columns([1, 2])
+        with pred_col1:
+            pred_symbol = st.text_input("股票代码", value="600519", key="pred_symbol",
+                                        help="A股直接输入代码，美股输入如AAPL")
+            pred_market = st.selectbox("市场", list(MARKETS.keys()), 
+                                       format_func=lambda x: MARKETS[x], key="pred_market")
+            pred_days = st.slider("预测天数", 1, 30, 7, key="pred_days")
+            pred_algo = st.selectbox("算法", ALGORITHMS, key="pred_algo")
+            
+            if st.button("🔮 开始预测", type="primary", use_container_width=True):
+                with st.spinner(f"正在用 {pred_algo} 预测 {pred_symbol} 未来{pred_days}天走势..."):
+                    result = client.predict(pred_symbol, pred_market, pred_days, pred_algo)
+                    
+                    if result:
+                        # 显示预测结果
+                        dir_emoji = "🟢" if result.direction == "up" else "🔴" if result.direction == "down" else "🟡"
+                        dir_text = "看涨" if result.direction == "up" else "看跌" if result.direction == "down" else "中性"
+                        
+                        st.markdown(f"### {dir_emoji} {result.name or result.symbol} - {dir_text}")
+                        
+                        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+                        with kpi1:
+                            st.metric("当前价格", f"${result.current_price:.2f}" if pred_market != "CN" else f"¥{result.current_price:.2f}")
+                        with kpi2:
+                            st.metric("预测价格", f"${result.predicted_price:.2f}" if pred_market != "CN" else f"¥{result.predicted_price:.2f}",
+                                     delta=f"{result.change_percent:+.2f}%")
+                        with kpi3:
+                            conf_color = "🟢" if result.confidence > 0.7 else "🟡" if result.confidence > 0.5 else "🔴"
+                            st.metric("置信度", f"{conf_color} {result.confidence:.0%}")
+                        with kpi4:
+                            st.metric("预测算法", result.algorithm)
+                        
+                        # 数据质量
+                        if result.data_quality:
+                            with st.expander("📋 数据质量详情"):
+                                st.json(result.data_quality)
+                    else:
+                        st.error("预测失败，请检查股票代码和市场是否正确")
+        
+        with pred_col2:
+            st.markdown("#### 📖 预测原理")
+            st.markdown("""
+            **G-Prophet 预测方法论:**
+            
+            1. **市场状态建模** — 将市场视为状态向量 `S = (T, V, U, M)`
+               - T: 趋势结构（方向惯性）
+               - V: 波动率水平（价格波动区间）
+               - U: 不确定性分布（未来路径概率）
+               - M: 市场结构（路径依赖）
+            
+            2. **蒙特卡洛路径生成** — 基于状态向量生成大量条件化价格路径
+            
+            3. **概率预测** — 输出预测区间而非单一点预测
+            
+            > 核心思想: "价格是市场状态的结果，决策应基于状态匹配"
+            """)
+            
+            st.markdown("#### 💰 点数消耗")
+            st.markdown(f"""
+            | 市场 | 每次预测点数 |
+            |------|-------------|
+            | A股 (CN) | {POINTS_COST['predict_cn']} 点 |
+            | 港股 (HK) | {POINTS_COST['predict_hk']} 点 |
+            | 美股 (US) | {POINTS_COST['predict_us']} 点 |
+            | 加密货币 | {POINTS_COST['predict_crypto']} 点 |
+            """)
+    
+    # Tab 2: 多算法对比
+    with tab2:
+        st.markdown("### ⚡ 多算法对比预测")
+        st.caption("多个AI算法同时预测，交叉验证提高可靠性")
+        
+        cmp_col1, cmp_col2 = st.columns([1, 2])
+        with cmp_col1:
+            cmp_symbol = st.text_input("股票代码", value="600519", key="cmp_symbol")
+            cmp_market = st.selectbox("市场", list(MARKETS.keys()),
+                                      format_func=lambda x: MARKETS[x], key="cmp_market")
+            cmp_days = st.slider("预测天数", 1, 30, 5, key="cmp_days")
+            
+            cmp_algos = st.multiselect(
+                "选择算法",
+                [a for a in ALGORITHMS if a != "auto"],
+                default=["gprophet2026v1", "lstm", "transformer", "ensemble"],
+                key="cmp_algos"
+            )
+            
+            if st.button("⚡ 开始对比", type="primary", use_container_width=True):
+                if len(cmp_algos) < 2:
+                    st.warning("请至少选择2个算法进行对比")
+                else:
+                    with st.spinner(f"正在用 {len(cmp_algos)} 个算法对比预测..."):
+                        result = client.predict_compare(cmp_symbol, cmp_market, cmp_days, cmp_algos)
+                        
+                        if result:
+                            # 共识结果
+                            consensus_emoji = "🟢" if result.consensus_direction == "up" else "🔴" if result.consensus_direction == "down" else "🟡"
+                            st.markdown(f"### {consensus_emoji} {result.name or result.symbol} — 共识: {result.consensus_direction}")
+                            
+                            st.metric("最优算法", result.best_algorithm)
+                            st.metric("平均预测价", f"¥{result.average_predicted_price:.2f}" if cmp_market == "CN" else f"${result.average_predicted_price:.2f}")
+                            
+                            # 各算法结果表格
+                            import pandas as pd
+                            rows = []
+                            for r in result.results:
+                                rows.append({
+                                    "算法": r.get("algorithm", ""),
+                                    "预测价格": r.get("predicted_price", 0),
+                                    "涨跌幅": f"{r.get('change_percent', 0):+.2f}%",
+                                    "方向": r.get("direction", ""),
+                                    "置信度": f"{r.get('confidence', 0):.0%}",
+                                    "状态": "✅" if r.get("success") else "❌",
+                                })
+                            
+                            if rows:
+                                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+                        else:
+                            st.error("对比预测失败")
+        
+        with cmp_col2:
+            st.markdown("#### 📊 对比分析说明")
+            st.markdown("""
+            **多算法交叉验证的价值:**
+            
+            - **降低单一模型偏差**: 每种算法有自己的盲区，多算法交叉可互相弥补
+            - **共识信号更可靠**: 当多个算法一致看涨/看跌时，信号准确率更高
+            - **发现分歧机会**: 算法间的分歧可能暗示市场不确定性
+            
+            **算法说明:**
+            - **gprophet2026v1**: G-Prophet自研，蒙特卡洛+状态建模
+            - **LSTM**: 长短期记忆网络，擅长时序依赖捕捉
+            - **Transformer**: 注意力机制，擅长长程依赖
+            - **Ensemble**: 集成模型，多模型投票
+            - **Random Forest**: 随机森林，稳健性强
+            """)
+    
+    # Tab 3: 技术分析
+    with tab3:
+        st.markdown("### 📊 AI 技术分析")
+        st.caption("自动计算技术指标并生成交易信号")
+        
+        tech_col1, tech_col2 = st.columns([1, 2])
+        with tech_col1:
+            tech_symbol = st.text_input("股票代码", value="600519", key="tech_symbol")
+            tech_market = st.selectbox("市场", list(MARKETS.keys()),
+                                       format_func=lambda x: MARKETS[x], key="tech_market")
+            
+            tech_indicators = st.multiselect(
+                "技术指标",
+                TECHNICAL_INDICATORS,
+                default=["rsi", "macd", "bollinger", "kdj"],
+                key="tech_indicators"
+            )
+            
+            if st.button("📊 技术分析", type="primary", use_container_width=True):
+                with st.spinner("正在分析技术指标..."):
+                    result = client.technical_analyze(tech_symbol, tech_market, tech_indicators)
+                    
+                    if result:
+                        signal_emoji = "🟢" if result.overall_signal == "bullish" else "🔴" if result.overall_signal == "bearish" else "🟡"
+                        signal_text = "看涨" if result.overall_signal == "bullish" else "看跌" if result.overall_signal == "bearish" else "中性"
+                        
+                        st.markdown(f"### {signal_emoji} {result.symbol} — {signal_text}")
+                        st.metric("信号强度", f"{result.signal_strength:.0%}")
+                        
+                        # 指标详情
+                        for name, value in result.indicators.items():
+                            with st.expander(f"📋 {name.upper()}"):
+                                st.json(value)
+                        
+                        # 信号列表
+                        if result.signals:
+                            st.markdown("**交易信号:**")
+                            for sig in result.signals:
+                                emoji = "🟢" if sig.get("type") == "bullish" else "🔴"
+                                st.markdown(f"- {emoji} {sig.get('indicator', '')}: {sig.get('type', '')}")
+                    else:
+                        st.error("技术分析失败")
+        
+        with tech_col2:
+            st.markdown("#### 📖 技术指标说明")
+            st.markdown("""
+            | 指标 | 类型 | 用途 |
+            |------|------|------|
+            | **RSI** | 动量 | 超买超卖判断 (>70超买, <30超卖) |
+            | **MACD** | 趋势 | 趋势方向+动量 (金叉/死叉) |
+            | **布林带** | 波动率 | 价格区间+突破信号 |
+            | **KDJ** | 动量 | 随机振荡，短线交易信号 |
+            | **SMA** | 趋势 | 简单移动平均线 |
+            | **EMA** | 趋势 | 指数移动平均线 (更灵敏) |
+            """)
+    
+    # Tab 4: AI 报告
+    with tab4:
+        st.markdown("### 🧠 AI 深度分析报告")
+        st.caption("多智能体协作，从5个维度全面评估股票")
+        
+        report_type = st.radio("分析类型", ["📋 单股票分析 (58点)", "🔬 5维深度分析 (150点)"], 
+                               horizontal=True, key="report_type")
+        is_comprehensive = "5维" in report_type
+        
+        rpt_col1, rpt_col2 = st.columns([1, 2])
+        with rpt_col1:
+            rpt_symbol = st.text_input("股票代码", value="600519", key="rpt_symbol")
+            rpt_market = st.selectbox("市场", list(MARKETS.keys()),
+                                      format_func=lambda x: MARKETS[x], key="rpt_market")
+            
+            if st.button("🧠 生成分析报告", type="primary", use_container_width=True):
+                with st.spinner("AI智能体正在分析中，请稍候..." if not is_comprehensive 
+                                else "5维深度分析中，多智能体协作中..."):
+                    
+                    progress = st.progress(0, text="正在提交分析任务...")
+                    
+                    if is_comprehensive:
+                        result = client.analyze_comprehensive(rpt_symbol, rpt_market)
+                    else:
+                        result = client.analyze_stock(rpt_symbol, rpt_market)
+                    
+                    progress.progress(50, text="分析完成，正在生成报告...")
+                    
+                    if result:
+                        progress.progress(100, text="✅ 报告生成完成!")
+                        
+                        # 显示报告
+                        rating_map = {
+                            "bullish": ("🟢 看涨", "green"),
+                            "bearish": ("🔴 看跌", "red"),
+                            "neutral": ("🟡 中性", "yellow"),
+                            "cautious": ("🟠 谨慎", "orange"),
+                        }
+                        rating_text, rating_color = rating_map.get(result.overall_rating, ("⚪ 未知", "gray"))
+                        
+                        st.markdown(f"### {rating_text} — 置信度 {result.confidence:.0%}")
+                        st.metric("风险等级", result.risk_level)
+                        st.markdown(f"**建议**: {result.recommendation}")
+                        
+                        # 各维度分析
+                        if result.agents:
+                            st.markdown("---")
+                            agent_names = {
+                                "technical": "📊 技术面",
+                                "fundamental": "📄 基本面",
+                                "capital_flow": "💰 资金流向",
+                                "sentiment": "📰 市场情绪",
+                                "macro": "🌍 宏观环境",
+                            }
+                            
+                            agent_cols = st.columns(len(result.agents))
+                            for i, (key, value) in enumerate(result.agents.items()):
+                                with agent_cols[i]:
+                                    name = agent_names.get(key, key)
+                                    agent_rating = value.get("rating", "")
+                                    agent_conf = value.get("confidence", 0)
+                                    rating_emoji = "🟢" if agent_rating == "bullish" else "🔴" if agent_rating == "bearish" else "🟡"
+                                    
+                                    st.markdown(f"**{name}**")
+                                    st.markdown(f"{rating_emoji} {agent_rating}")
+                                    st.markdown(f"置信度: {agent_conf:.0%}")
+                    else:
+                        progress.empty()
+                        st.error("分析报告生成失败，请检查余额是否充足")
+        
+        with rpt_col2:
+            st.markdown("#### 📖 分析维度说明")
+            if is_comprehensive:
+                st.markdown("""
+                **5维深度分析** — 模拟专业投研机构的分析流程:
+                
+                1. 📊 **技术面智能体** — K线形态、技术指标、趋势分析
+                2. 📄 **基本面智能体** — 财务数据、行业地位、估值水平
+                3. 💰 **资金流向智能体** — 主力资金、北向资金、龙虎榜
+                4. 📰 **市场情绪智能体** — 社交媒体、新闻舆情、市场氛围
+                5. 🌍 **宏观环境智能体** — 宏观经济、政策导向、行业周期
+                
+                各智能体独立分析 → 交叉验证 → 消除偏见 → 形成共识建议
+                """)
+            else:
+                st.markdown("""
+                **单股票分析** — 基础AI分析:
+                
+                - 自动获取最新市场数据
+                - 多维度快速评估
+                - 给出交易建议和风险提示
+                
+                > 如需更深入的分析，推荐使用 5维深度分析
+                """)
+    
+    # Tab 5: 市场情绪
+    with tab5:
+        st.markdown("### 🌐 市场情绪")
+        
+        sent_col1, sent_col2 = st.columns(2)
+        with sent_col1:
+            st.markdown("#### 😱 恐惧与贪婪指数 (加密货币)")
+            
+            if st.button("🔄 获取最新指数", use_container_width=True):
+                result = client.get_fear_greed()
+                if result and result.get("success"):
+                    d = result["data"]
+                    value = d.get("value", 50)
+                    classification = d.get("classification", "Neutral")
+                    prev_value = d.get("previous_value", 50)
+                    change = d.get("change", 0)
+                    
+                    # 可视化仪表
+                    fg_color = "#22c55e" if value > 60 else "#eab308" if value > 40 else "#ef4444"
+                    st.markdown(f"""
+                    <div style="text-align:center; padding: 20px;">
+                        <div style="font-size: 48px; font-weight: bold; color: {fg_color};">{value}</div>
+                        <div style="font-size: 20px; color: {fg_color};">{classification}</div>
+                        <div style="margin-top: 10px; color: #888;">
+                            前值: {prev_value} | 变化: {'+' if change > 0 else ''}{change}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.progress(value / 100)
+                    
+                    # 刻度说明
+                    st.markdown("""
+                    | 区间 | 含义 |
+                    |------|------|
+                    | 0-25 | 😱 极度恐惧 |
+                    | 25-45 | 😟 恐惧 |
+                    | 45-55 | 😐 中性 |
+                    | 55-75 | 😊 贪婪 |
+                    | 75-100 | 🤑 极度贪婪 |
+                    """)
+                else:
+                    st.error("获取恐惧贪婪指数失败")
+        
+        with sent_col2:
+            st.markdown("#### 📊 市场概览")
+            
+            overview_market = st.selectbox("市场", ["CN", "US"], 
+                                           format_func=lambda x: "A股" if x == "CN" else "美股",
+                                           key="overview_market")
+            
+            if st.button("🔄 获取市场概览", use_container_width=True, key="btn_overview"):
+                result = client.get_market_overview(overview_market)
+                if result and result.get("success"):
+                    d = result["data"]
+                    st.json(d)
+                else:
+                    st.error("获取市场概览失败")
+
+
+
 def page_kline():
     st.title("📉 K线分析")
 
@@ -2418,6 +2847,7 @@ page_map = {
     "🧠 代码分析": page_code_analyzer,
     "🏦 市场看板": page_market,
     "📈 专业分析": page_analysis,
+    "🔮 AI预测": page_ai_predict,
     "📉 K线分析": page_kline,
     "⚔️ 策略对比": page_compare,
     "📈 策略详情": page_detail,
