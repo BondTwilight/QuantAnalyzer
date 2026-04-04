@@ -66,7 +66,7 @@ class AsyncTask:
         self.message = message
         self.save_state()
     
-    def execute(self):
+    def execute(self, progress_cb=None):
         """执行任务"""
         try:
             self.status = "running"
@@ -75,8 +75,14 @@ class AsyncTask:
             
             logger.info(f"开始执行任务: {self.task_type} ({self.task_id})")
             
-            # 执行函数
-            self.result = self.func(*self.args, **self.kwargs)
+            # 将任务实例绑定到当前线程，方便内部函数通过 threading.current_thread()._task 更新进度
+            threading.current_thread()._task = self
+            
+            # 执行函数（支持传入 progress_cb）
+            if progress_cb:
+                self.result = self.func(*self.args, **self.kwargs, progress_cb=self.update_progress)
+            else:
+                self.result = self.func(*self.args, **self.kwargs)
             
             self.status = "completed"
             self.completed_at = datetime.now()
@@ -145,8 +151,8 @@ class AsyncTaskManager:
                 if task is None:
                     continue
                 
-                # 执行任务
-                task.execute()
+                # 执行任务（传入 progress_cb）
+                task.execute(progress_cb=task.update_progress)
                 
                 # 清理已完成的任务（保留最近100个）
                 self._cleanup_old_tasks()
@@ -502,6 +508,23 @@ class AsyncTasks:
         except Exception as e:
             logger.error(f"多源学习失败: {e}")
             raise
+
+    @staticmethod
+    @async_task("auto_evolution")
+    def run_evolution_cycle(**kwargs):
+        """异步执行一轮策略自进化循环"""
+        from core.auto_evolution import get_evolution_engine
+
+        engine = get_evolution_engine()
+
+        # 定义进度回调
+        def progress_cb(pct, msg):
+            task = getattr(threading.current_thread(), "_task", None)
+            if task:
+                task.update_progress(pct, msg)
+
+        result = engine.run_cycle(progress_cb=progress_cb)
+        return result.to_dict()
 
 
 # 启动任务管理器

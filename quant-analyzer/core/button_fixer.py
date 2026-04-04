@@ -166,6 +166,7 @@ class ButtonResponseFixer:
     def create_action_button(label: str, action_func: Callable, 
                            success_msg: str = "操作成功",
                            error_msg: str = "操作失败",
+                           key: str = None,
                            **button_kwargs) -> bool:
         """
         创建动作按钮，自动处理结果反馈
@@ -175,28 +176,26 @@ class ButtonResponseFixer:
             action_func: 执行函数
             success_msg: 成功消息
             error_msg: 错误消息前缀
+            key: 按钮唯一键（必须显式传入！）
             **button_kwargs: 按钮参数
             
         Returns:
             bool: 是否成功执行
         """
-        # 避免key重复传入
-        button_kwargs.pop("key", None)
-        key = f"action_btn_{hash(str(action_func)) & 0xFFFFFFFF}"
+        # 必须显式传入 key，避免 lambda hash 不稳定的问题
+        if key is None:
+            import hashlib
+            key = "action_btn_" + hashlib.md5(label.encode()).hexdigest()[:10]
         
         # 兼容不同Streamlit版本：type参数处理
         type_val = button_kwargs.pop("type", None)
         
-        # 直接根据type_val是否存在决定传参方式
         if type_val is not None:
-            # 明确指定了type，直接使用
             try:
                 clicked = st.button(label, key=key, type=type_val, **button_kwargs)
             except Exception:
-                # 旧版Streamlit不支持type参数，重试不带type
                 clicked = st.button(label, key=key, **button_kwargs)
         else:
-            # 未指定type，新版Streamlit要求type必填，默认secondary
             try:
                 clicked = st.button(label, key=key, **button_kwargs)
             except Exception:
@@ -205,7 +204,7 @@ class ButtonResponseFixer:
         if clicked:
             try:
                 result = action_func()
-                if result is not False:  # 允许函数返回False表示失败
+                if result is not False:
                     st.success(success_msg)
                     return True
                 else:

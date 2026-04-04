@@ -40,13 +40,14 @@ class BacktestEngine:
         self.cerebro.broker.setcommission(commission=COMMISSION)
         self.cerebro.broker.set_slippage_perc(perc=SLIPPAGE)
 
+        # 先复制数据，避免修改原始DataFrame
+        df = data_feed.copy()
+        
         # 确保数据有所有必需列且为float
         for col in ["open", "high", "low", "close", "volume"]:
-            if col not in data_feed.columns:
-                data_feed[col] = data_feed.get("close", 0)
-            data_feed[col] = pd.to_numeric(data_feed[col], errors="coerce").fillna(0)
-
-        df = data_feed.copy()
+            if col not in df.columns:
+                df[col] = df.get("close", 0)
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
         # 确保 date 列作为 DatetimeIndex
         if "date" in df.columns:
             df["date"] = pd.to_datetime(df["date"])
@@ -73,6 +74,14 @@ class BacktestEngine:
 
         results = self.cerebro.run(runonce=False)  # 用step-by-step模式避免numpy兼容问题
         strat = results[0]
+        
+        # 调试: 检查交易分析器
+        try:
+            ta = strat.analyzers.trades.get_analysis()
+            total_trades = ta.get("total", {}).get("total", 0)
+            logger.info(f"[BacktestEngine] 交易次数: {total_trades}")
+        except Exception as e:
+            logger.warning(f"[BacktestEngine] 获取交易统计失败: {e}")
 
         return self._extract_results(strat, data_feed, benchmark_feed)
 
@@ -115,7 +124,7 @@ class BacktestEngine:
         # 交易统计
         trades = []
         try:
-            ta = strat.analyzers.trades.get("analysis")
+            ta = strat.analyzers.trades.get_analysis()
             if ta:
                 total_trades = ta.get("total", {}).get("total", 0)
                 won = ta.get("won", {}).get("total", 0)

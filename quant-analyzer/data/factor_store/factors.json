@@ -1,0 +1,23 @@
+{
+  "test_factor": {
+    "name": "test_factor",
+    "expression": "sma(close, 5) / sma(close, 20) - 1",
+    "category": "technical",
+    "description": "均线比率",
+    "author": "alphaforge",
+    "version": 1,
+    "params": {},
+    "ic_mean": 0.0,
+    "ic_std": 0.0,
+    "ir": 0.0,
+    "sharpe": 0.0,
+    "turnover": 0.0,
+    "max_drawdown": 0.0,
+    "fitness": 0.0,
+    "is_valid": false,
+    "created_at": "2026-04-05 00:26:35",
+    "evaluated_at": "",
+    "data_window": 250,
+    "tags": []
+  }
+}

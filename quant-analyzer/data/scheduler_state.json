@@ -1,0 +1,57 @@
+{
+  "best_score": 25.0,
+  "best_task_id": "evo_20260405_002658",
+  "best_updated_at": "2026-04-05 00:27:21",
+  "best_ensemble": {
+    "weights": {
+      "factor_5267": NaN,
+      "factor_1771": 0.8054600000000001,
+      "factor_9375": 0.8054600000000001
+    },
+    "score": 25.0,
+    "sharpe": 0.0,
+    "total_return": -0.2359
+  },
+  "best_factors": [
+    {
+      "expression": "ts_min(high, 19)",
+      "fitness": 0.718,
+      "ic_mean": 0.1032,
+      "ir": NaN,
+      "sharpe": 0,
+      "generation": 1
+    },
+    {
+      "expression": "max(close, ts_min(high, 19))",
+      "fitness": 0.6883,
+      "ic_mean": 0.1235,
+      "ir": -1.8319,
+      "sharpe": 0,
+      "generation": 2
+    },
+    {
+      "expression": "max(close, max(close, ts_min(high, 19)))",
+      "fitness": 0.6883,
+      "ic_mean": 0.1235,
+      "ir": -1.8319,
+      "sharpe": 0,
+      "generation": 3
+    },
+    {
+      "expression": "max(close, ts_rank(ts_min(high, 19), 55))",
+      "fitness": 0.6875,
+      "ic_mean": 0.1222,
+      "ir": -1.8927,
+      "sharpe": 0,
+      "generation": 0
+    },
+    {
+      "expression": "max(close, ts_rank(rank(high), 55))",
+      "fitness": 0.6875,
+      "ic_mean": 0.1222,
+      "ir": -1.8927,
+      "sharpe": 0,
+      "generation": 1
+    }
+  ]
+}

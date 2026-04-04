@@ -133,17 +133,15 @@ cache_system = SmartCache("app")
 # ═══════════════════════════════════════════════
 with st.sidebar:
     st.markdown("## 🧠 QuantBrain")
-    st.caption("AI量化策略自学习系统 v4.0")
+    st.caption("AI量化策略自进化系统 v5.0")
 
     page = st.radio("导航", [
         "📊 信号仪表盘",
         "📡 每日扫描",
         "💼 持仓跟踪",
         "📈 K线分析",
-        "🤖 AI策略学习",
-        "🌐 多源策略学习",
+        "🧬 策略进化中心",
         "🔄 策略回测",
-        "📊 数据库性能",
         "⚙️ 设置",
     ], label_visibility="collapsed")
 
@@ -1128,8 +1126,258 @@ elif page == "📈 K线分析":
             st.error(f"无法获取 {stock_code} 的数据，请检查代码是否正确")
 
 
+
+
 # ═══════════════════════════════════════════════
-# 页面5: AI策略学习
+# 页面5: 策略进化中心 v2.0（实时可视化版）
+# ═══════════════════════════════════════════════
+elif page == "🧬 策略进化中心":
+    st.markdown('<div class="page-title">🧬 策略进化中心 v3.0</div>', unsafe_allow_html=True)
+    st.markdown('<div class="page-subtitle">生产级稳定版：使用经过验证的策略模板，确保100%可回测</div>', unsafe_allow_html=True)
+
+    try:
+        from core.evolution_v3 import get_evolution_engine_v3
+        engine = get_evolution_engine_v3()
+        v3_available = True
+    except ImportError as e:
+        st.warning(f"进化引擎v3加载失败: {e}")
+        try:
+            from core.evolution_v2 import get_evolution_engine_v2
+            engine = get_evolution_engine_v2()
+            v3_available = False
+        except ImportError:
+            from core.auto_evolution import get_evolution_engine
+            engine = get_evolution_engine()
+            v3_available = False
+
+    # 初始化session state
+    if "evolution_logs" not in st.session_state:
+        st.session_state.evolution_logs = []
+    if "evolution_running" not in st.session_state:
+        st.session_state.evolution_running = False
+    if "current_record" not in st.session_state:
+        st.session_state.current_record = None
+    if "auto_refresh" not in st.session_state:
+        st.session_state.auto_refresh = False
+
+    # 状态概览
+    status = engine.get_status()
+    
+    col_s1, col_s2, col_s3, col_s4 = st.columns(4)
+    with col_s1:
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">进化轮次</div>
+            <div class="metric-value">{status['cycle_count']}</div>
+            <div class="metric-change" style="color:#94a3b8">上次: {status['last_run'][:16] if status['last_run'] != '从未运行' else '从未'}</div>
+        </div>""", unsafe_allow_html=True)
+    with col_s2:
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">候选策略</div>
+            <div class="metric-value">{status['total_candidates']}</div>
+            <div class="metric-change" style="color:#94a3b8">策略库总数</div>
+        </div>""", unsafe_allow_html=True)
+    with col_s3:
+        latest = engine.get_latest_cycle()
+        best_score = latest.get('best_strategy_score', 0) if latest else 0
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">最佳评分</div>
+            <div class="metric-value">{best_score:.1f}</div>
+            <div class="metric-change" style="color:#94a3b8">历史最高</div>
+        </div>""", unsafe_allow_html=True)
+    with col_s4:
+        run_status = "🟡 运行中" if st.session_state.evolution_running else "🟢 就绪"
+        run_color = "#f59e0b" if st.session_state.evolution_running else "#10b981"
+        st.markdown(f"""<div class="metric-card">
+            <div class="metric-label">当前状态</div>
+            <div class="metric-value" style="color:{run_color};font-size:20px;">{run_status}</div>
+            <div class="metric-change" style="color:#94a3b8">v3.0 稳定版</div>
+        </div>""", unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # 六阶段流水线可视化
+    st.markdown("### 🔄 进化流水线")
+    
+    phases = ["discovery", "backtest", "optimize", "factor_extraction"]
+    phase_names = {
+        "discovery": ("🔍", "策略发现"),
+        "backtest": ("📊", "回测验证"),
+        "optimize": ("⚡", "AI优化"),
+        "factor_extraction": ("🧪", "因子提取"),
+    }
+    
+    # 获取当前阶段状态
+    phase_data = {}
+    if latest and "phases" in latest:
+        for phase in phases:
+            phase_data[phase] = latest["phases"].get(phase, {"status": "pending", "progress_pct": 0, "message": ""})
+    else:
+        for phase in phases:
+            phase_data[phase] = {"status": "pending", "progress_pct": 0, "message": "等待启动..."}
+
+    # 渲染阶段卡片
+    phase_cols = st.columns(4)
+    for i, phase in enumerate(phases):
+        icon, name = phase_names[phase]
+        data = phase_data.get(phase, {})
+        status = data.get("status", "pending")
+        progress = data.get("progress_pct", 0)
+        message = data.get("message", "")
+        
+        status_colors = {
+            "pending": ("#334155", "#94a3b8"),
+            "running": ("#3b82f6", "#3b82f6"),
+            "completed": ("#10b981", "#10b981"),
+            "failed": ("#ef4444", "#ef4444"),
+        }
+        border_color, glow = status_colors.get(status, ("#334155", "#94a3b8"))
+        
+        with phase_cols[i]:
+            st.markdown(f"""
+            <div style="background: linear-gradient(135deg, #1a1f35, #141929); 
+                        border: 2px solid {border_color}; 
+                        border-radius: 12px; padding: 12px; 
+                        {'box-shadow: 0 0 15px ' + glow + '40;' if status == 'running' else ''}
+                        text-align: center;">
+                <div style="font-size: 20px; margin-bottom: 4px;">{icon}</div>
+                <div style="font-size: 11px; font-weight: 600; color: #f8fafc;">{name}</div>
+                <div style="font-size: 10px; color: {glow}; margin-top: 4px;">{status.upper()}</div>
+                <div style="background: #0f1629; border-radius: 4px; height: 4px; margin-top: 8px; overflow: hidden;">
+                    <div style="background: linear-gradient(90deg, #3b82f6, #a855f7); 
+                                height: 100%; width: {progress}%; border-radius: 4px;"></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # 控制按钮 + 实时统计
+    col_ctrl1, col_ctrl2, col_ctrl3, col_ctrl4 = st.columns([1, 1, 1, 2])
+    
+    with col_ctrl1:
+        if st.button("🚀 开始进化", type="primary", use_container_width=True,
+                     disabled=st.session_state.evolution_running):
+            st.session_state.evolution_running = True
+            st.session_state.auto_refresh = True
+            
+            import threading
+            def run_evolution():
+                try:
+                    def progress_cb(pct, msg):
+                        st.session_state.current_progress = pct
+                        st.session_state.current_message = msg
+                    
+                    result = engine.run_cycle(progress_cb=progress_cb)
+                    st.session_state.current_record = result.to_dict() if hasattr(result, 'to_dict') else result
+                    st.session_state.evolution_running = False
+                except Exception as e:
+                    st.session_state.evolution_running = False
+                    st.session_state.evolution_error = str(e)
+            
+            thread = threading.Thread(target=run_evolution, daemon=True)
+            thread.start()
+            time.sleep(0.5)
+            st.rerun()
+
+    with col_ctrl2:
+        if st.button("⏹️ 停止", use_container_width=True,
+                     disabled=not st.session_state.evolution_running):
+            st.session_state.evolution_running = False
+            st.session_state.auto_refresh = False
+            st.rerun()
+
+    with col_ctrl3:
+        auto_refresh = st.toggle("自动刷新", value=st.session_state.auto_refresh)
+        if auto_refresh != st.session_state.auto_refresh:
+            st.session_state.auto_refresh = auto_refresh
+            st.rerun()
+
+    with col_ctrl4:
+        # 本轮统计
+        if latest:
+            st.markdown(f"""
+            <div style="display: flex; gap: 16px; align-items: center; justify-content: flex-end;">
+                <div style="text-align: center;">
+                    <div style="font-size: 20px; font-weight: 700; color: #3b82f6;">{latest.get('strategies_discovered', 0)}</div>
+                    <div style="font-size: 10px; color: #64748b;">发现</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 20px; font-weight: 700; color: #10b981;">{latest.get('strategies_passed', 0)}</div>
+                    <div style="font-size: 10px; color: #64748b;">通过</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 20px; font-weight: 700; color: #a855f7;">{latest.get('strategies_optimized', 0)}</div>
+                    <div style="font-size: 10px; color: #64748b;">优化</div>
+                </div>
+                <div style="text-align: center;">
+                    <div style="font-size: 20px; font-weight: 700; color: #f59e0b;">{latest.get('factors_extracted', 0)}</div>
+                    <div style="font-size: 10px; color: #64748b;">因子</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    # 策略排行榜
+    st.markdown("### 🏆 策略排行榜")
+    
+    ranking = engine.get_strategy_ranking(limit=10)
+    if ranking:
+        df_data = []
+        for i, s in enumerate(ranking):
+            metrics = s.get("backtest_metrics", {}) or {}
+            df_data.append({
+                "排名": i + 1,
+                "策略名称": s.get("name", "")[:20],
+                "来源": s.get("source", "")[:10],
+                "综合评分": f"{s.get('composite_score', 0):.1f}",
+                "年化收益": f"{metrics.get('annual_return', 0):.1%}",
+                "夏普": f"{metrics.get('sharpe_ratio', 0):.2f}",
+                "回撤": f"{metrics.get('max_drawdown', 0):.1%}",
+                "胜率": f"{metrics.get('win_rate', 0):.1%}",
+            })
+        
+        df = pd.DataFrame(df_data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info("暂无策略数据，点击「开始进化」启动第一轮进化")
+
+    st.markdown("---")
+
+    # 进化历史
+    st.markdown("### 📊 进化历史")
+    
+    history = engine.get_evolution_history(limit=5)
+    if history:
+        history_cols = st.columns(min(len(history), 5))
+        for i, record in enumerate(history[:5]):
+            with history_cols[i]:
+                status_emoji = {"completed": "✅", "failed": "❌", "running": "🔄"}.get(record.get("status"), "❓")
+                st.markdown(f"""
+                <div style="background: linear-gradient(135deg, #1a1f35, #141929); 
+                            border: 1px solid #1e293b; border-radius: 12px; padding: 12px;">
+                    <div style="font-size: 12px; color: #64748b;">第 {record.get('cycle_id')} 轮</div>
+                    <div style="font-size: 16px; margin: 4px 0;">{status_emoji}</div>
+                    <div style="font-size: 11px; color: #94a3b8;">
+                        发现 {record.get('strategies_discovered', 0)} | 
+                        通过 {record.get('strategies_passed', 0)}
+                    </div>
+                    <div style="font-size: 10px; color: #64748b; margin-top: 4px;">
+                        {record.get('started_at', '')[:10]}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+    else:
+        st.info("暂无进化历史")
+
+    # 自动刷新
+    if st.session_state.auto_refresh and st.session_state.evolution_running:
+        time.sleep(3)
+        st.rerun()
+
+
+# ═══════════════════════════════════════════════
+# 页面6: AI策略学习
 # ═══════════════════════════════════════════════
 elif page == "🤖 AI策略学习":
     st.markdown('<div class="page-title">🤖 AI策略学习</div>', unsafe_allow_html=True)

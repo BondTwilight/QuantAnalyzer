@@ -70,6 +70,7 @@ class AkShareSource:
         """获取股票日K数据"""
         try:
             import akshare as ak
+            import urllib3
             code = stock_code.replace(".SZ", "").replace(".SH", "").replace("sh.", "").replace("sz.", "")
 
             if not end_date:
@@ -88,6 +89,7 @@ class AkShareSource:
                 )
 
             if df is None or df.empty:
+                # 检查是否是连接错误导致的空数据
                 return pd.DataFrame()
 
             rename_map = {
@@ -119,6 +121,13 @@ class AkShareSource:
             df = df.sort_values("date").reset_index(drop=True)
             return df
 
+        except (urllib3.exceptions.MaxRetryError, 
+                urllib3.exceptions.NewConnectionError,
+                ConnectionError,
+                TimeoutError) as e:
+            # 连接错误，抛出异常以便触发备用数据源
+            logger.warning(f"AkShare连接失败 {stock_code}: {e}")
+            raise
         except Exception as e:
             logger.error(f"AkShare get_stock_daily failed for {stock_code}: {e}")
             return pd.DataFrame()
@@ -476,16 +485,23 @@ class MultiDataSource:
             lookback = days or 365
             start_date = (datetime.now() - timedelta(days=lookback)).strftime("%Y-%m-%d")
 
-        # 1. AkShare（主）
-        df = AkShareSource.get_stock_daily(stock_code, start_date, end_date, days)
-        if df is not None and not df.empty:
-            return df
-
-        # 2. BaoStock（备用）
-        if not _is_cloud_env():
-            df = BaoStockSource.get_stock_daily(stock_code, start_date, end_date)
+        # 1. AkShare（主）- 本地环境下如果AkShare失败，尝试BaoStock
+        try:
+            df = AkShareSource.get_stock_daily(stock_code, start_date, end_date, days)
             if df is not None and not df.empty:
                 return df
+        except Exception as e:
+            logger.warning(f"AkShare获取数据失败，尝试备用源: {e}")
+
+        # 2. BaoStock（备用）- 仅在非云环境
+        if not _is_cloud_env():
+            try:
+                df = BaoStockSource.get_stock_daily(stock_code, start_date, end_date)
+                if df is not None and not df.empty:
+                    logger.info(f"使用BaoStock获取 {stock_code} 数据成功")
+                    return df
+            except Exception as e:
+                logger.warning(f"BaoStock也失败了: {e}")
 
         return pd.DataFrame()
 

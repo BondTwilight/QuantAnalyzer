@@ -305,6 +305,8 @@ def render_sidebar():
             "⚔️ 策略PK",
             "📊 策略总览",
             "📚 策略库",
+            "🧬 AlphaForge 进化",
+            "📖 策略知识库",
             "🌐 平台对比",
             "🧠 代码分析",
             "🏦 市场看板",
@@ -2838,6 +2840,16 @@ def page_platform_comparison():
 # 主路由
 # ═══════════════════════════════════════════
 page = render_sidebar()
+
+# AlphaForge 进化中心是独立页面 (pages/evolution_center.py)
+# Streamlit 多页面应用会自动扫描 pages/ 目录
+# 当用户选择"🧬 AlphaForge 进化"时，需要跳转到对应页面
+if page == "🧬 AlphaForge 进化":
+    st.switch_page("pages/evolution_center.py")
+
+if page == "📖 策略知识库":
+    st.switch_page("pages/strategy_knowledge.py")
+
 page_map = {
     "🏠 首页": page_home,
     "⚔️ 策略PK": page_strategy_pk,
