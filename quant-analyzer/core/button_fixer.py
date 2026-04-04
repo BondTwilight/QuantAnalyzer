@@ -187,16 +187,20 @@ class ButtonResponseFixer:
         # 兼容不同Streamlit版本：type参数处理
         type_val = button_kwargs.pop("type", None)
         
-        try:
-            clicked = st.button(label, key=key, type=type_val, **button_kwargs)
-        except TypeError as e:
-            err_msg = str(e)
-            if "type" in err_msg:
-                # 新版要求type必须是primary/secondary/tertiary，默认传primary
-                clicked = st.button(label, key=key, type="primary", **button_kwargs)
-            else:
-                # 旧版不支持type参数，重试不带type
+        # 直接根据type_val是否存在决定传参方式
+        if type_val is not None:
+            # 明确指定了type，直接使用
+            try:
+                clicked = st.button(label, key=key, type=type_val, **button_kwargs)
+            except Exception:
+                # 旧版Streamlit不支持type参数，重试不带type
                 clicked = st.button(label, key=key, **button_kwargs)
+        else:
+            # 未指定type，新版Streamlit要求type必填，默认secondary
+            try:
+                clicked = st.button(label, key=key, **button_kwargs)
+            except Exception:
+                clicked = st.button(label, key=key, type="secondary", **button_kwargs)
         
         if clicked:
             try:
