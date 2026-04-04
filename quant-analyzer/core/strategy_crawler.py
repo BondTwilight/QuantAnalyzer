@@ -29,11 +29,10 @@ class CrawledStrategy:
     category: str  # 趋势/均值回归/多因子/事件驱动
     description: str
     code: str  # 完整策略代码
-    author: str
+    author: str = "社区"
     stars: int = 0
     language: str = "python"
     framework: str = "backtrader"  # backtrader/jqdata/pseudocode
-    author: str = "社区"
     tags: List[str] = None
     factors: List[str] = None  # 检测到的量化因子
     quality_score: float = 0.0  # 策略质量评分
@@ -976,7 +975,7 @@ def render_crawler_ui():
     with filter_col2:
         source_filter = st.selectbox("来源", ["全部"] + list(stats["by_source"].keys()))
     with filter_col3:
-        limit_n = st.number_input("显示数量", 5, 50, 20)
+        limit_n = st.number_input("显示数量", min_value=5, max_value=50, value=20)
 
     # 过滤
     filtered = strategies

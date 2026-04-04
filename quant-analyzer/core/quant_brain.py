@@ -35,6 +35,13 @@ try:
 except ImportError:
     CLOUD_STORAGE_AVAILABLE = False
 
+# 多数据源支持（统一BaoStock + AkShare）
+try:
+    from core.multi_data_source import MultiDataSource as _MDS
+    MULTI_DATA_SOURCE_AVAILABLE = True
+except ImportError:
+    MULTI_DATA_SOURCE_AVAILABLE = False
+
 
 def _load_json_file(filepath: Path) -> dict:
     """统一加载JSON文件：优先GitHub云存储，回退本地"""
@@ -154,211 +161,74 @@ class LearningRecord:
 
 
 # ═══════════════════════════════════════════════
-# 数据提供器 — 多源统一接口
+# 数据提供器 — 多源统一接口（委托给 MultiDataSource）
 # ═══════════════════════════════════════════════
 
 class DataProvider:
-    """股票数据统一接口"""
+    """股票数据统一接口 — 全部委托给 MultiDataSource（AkShare主 + BaoStock备用）"""
 
-    _bs_logged_in = False
-
-    @classmethod
-    def _bs_login(cls):
-        """BaoStock 连接复用，避免每次都 login/logout"""
-        if not cls._bs_logged_in:
-            import baostock as bs
-            lg = bs.login()
-            if lg.error_code != '0':
-                logger.warning(f"BaoStock login failed: {lg.error_msg}")
-            cls._bs_logged_in = True
-        return cls._bs_logged_in
-
-    @classmethod
-    def _bs_logout(cls):
-        """仅在应用退出时 logout"""
-        if cls._bs_logged_in:
-            try:
-                import baostock as bs
-                bs.logout()
-            except:
-                pass
-            cls._bs_logged_in = False
+    _name_cache: Dict = {}  # 股票名称缓存
 
     @staticmethod
     def get_stock_daily(stock_code: str, start_date: str = None, end_date: str = None, days: int = None) -> pd.DataFrame:
-        """获取股票日K数据 (BaoStock备用)"""
-        try:
-            import baostock as bs
-            if not DataProvider._bs_login():
-                return pd.DataFrame()
-
-            # 标准化代码格式
-            code = stock_code.replace(".SZ", "").replace(".SH", "")
-            if code.startswith("6"):
-                code = f"sh.{code}"
-            elif code.startswith(("0", "3")):
-                code = f"sz.{code}"
-            else:
-                code = f"sz.{code}"
-
-            if not end_date:
-                end_date = datetime.now().strftime("%Y-%m-%d")
-            if not start_date:
-                lookback = days or 365
-                start_date = (datetime.now() - timedelta(days=lookback)).strftime("%Y-%m-%d")
-
-            rs = bs.query_history_k_data_plus(
-                code,
-                "date,open,high,low,close,volume,amount,turn",
-                start_date=start_date, end_date=end_date,
-                frequency="d", adjustflag="2"  # 前复权
-            )
-
-            data_rows = []
-            while rs.next():
-                row = rs.get_row_data()
-                if row and row[0] and row[4] != '0':  # 排除停牌
-                    try:
-                        data_rows.append({
-                            "date": row[0],
-                            "open": float(row[1]),
-                            "high": float(row[2]),
-                            "low": float(row[3]),
-                            "close": float(row[4]),
-                            "volume": float(row[5]),
-                            "amount": float(row[6]) if row[6] else 0,
-                            "turnover": float(row[7]) if row[7] else 0,
-                        })
-                    except (ValueError, IndexError):
-                        continue
-
-            if not data_rows:
-                return pd.DataFrame()
-
-            df = pd.DataFrame(data_rows)
-            df["date"] = pd.to_datetime(df["date"])
-            df = df.sort_values("date").reset_index(drop=True)
-            return df
-
-        except Exception as e:
-            logger.error(f"get_stock_daily failed for {stock_code}: {e}")
-            return pd.DataFrame()
+        """获取股票日K数据"""
+        if MULTI_DATA_SOURCE_AVAILABLE:
+            df = _MDS.get_stock_daily(stock_code, start_date, end_date, days)
+            if df is not None and not df.empty:
+                return df
+        return pd.DataFrame()
 
     @staticmethod
     def get_stock_info(stock_code: str) -> Dict:
         """获取股票基本信息（带缓存）"""
-        # 缓存股票名称，避免重复查询
-        if not hasattr(DataProvider, '_name_cache'):
-            DataProvider._name_cache = {}
         if stock_code in DataProvider._name_cache:
             return DataProvider._name_cache[stock_code]
-
-        try:
-            import baostock as bs
-            if not DataProvider._bs_login():
-                return {"code": stock_code, "name": stock_code}
-            code = stock_code.replace(".SZ", "").replace(".SH", "")
-            if code.startswith("6"):
-                code = f"sh.{code}"
-            else:
-                code = f"sz.{code}"
-
-            rs = bs.query_stock_basic(code=code)
-            data = {}
-            if rs.next():
-                row = rs.get_row_data()
-                if row:
-                    data = {
-                        "code": row[0],
-                        "name": row[1] if len(row) > 1 else stock_code,
-                        "ipo_date": row[2] if len(row) > 2 else "",
-                        "out_date": row[3] if len(row) > 3 else "",
-                        "type": row[4] if len(row) > 4 else "",
-                        "status": row[5] if len(row) > 5 else "",
-                    }
-            if not data:
-                data = {"code": stock_code, "name": stock_code}
-            DataProvider._name_cache[stock_code] = data
-            return data
-        except:
-            return {"code": stock_code, "name": stock_code}
+        if MULTI_DATA_SOURCE_AVAILABLE:
+            info = _MDS.get_stock_info(stock_code)
+            DataProvider._name_cache[stock_code] = info
+            return info
+        info = {"code": stock_code, "name": stock_code}
+        DataProvider._name_cache[stock_code] = info
+        return info
 
     @staticmethod
     def get_stock_list() -> pd.DataFrame:
         """获取全部A股列表"""
-        try:
-            import baostock as bs
-            lg = bs.login()
-            rs = bs.query_stock_basic()
-            rows = []
-            while rs.next():
-                row = rs.get_row_data()
-                if row and row[5] == "1":  # 上市状态
-                    rows.append({
-                        "code": row[0],
-                        "name": row[1],
-                        "type": row[4],
-                    })
-            bs.logout()
-            return pd.DataFrame(rows)
-        except:
-            return pd.DataFrame()
+        if MULTI_DATA_SOURCE_AVAILABLE:
+            df = _MDS.get_stock_list()
+            if df is not None and not df.empty:
+                return df
+        return pd.DataFrame()
 
     @staticmethod
     def get_index_daily(index_code: str = "sh.000300", days: int = 365) -> pd.DataFrame:
-        """获取指数日K"""
-        try:
-            import baostock as bs
-            lg = bs.login()
-            end = datetime.now().strftime("%Y-%m-%d")
-            start = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-
-            rs = bs.query_history_k_data_plus(
-                index_code,
-                "date,open,high,low,close,volume",
-                start_date=start, end_date=end,
-                frequency="d", adjustflag="2"
-            )
-            rows = []
-            while rs.next():
-                row = rs.get_row_data()
-                if row and row[4] and row[4] != '0':
-                    rows.append({
-                        "date": row[0],
-                        "open": float(row[1]),
-                        "high": float(row[2]),
-                        "low": float(row[3]),
-                        "close": float(row[4]),
-                        "volume": float(row[5]),
-                    })
-            bs.logout()
-            return pd.DataFrame(rows)
-        except:
-            return pd.DataFrame()
+        """获取指数日K
+        
+        Args:
+            index_code: 支持纯数字 "000300" 或带前缀 "sh.000300"
+        """
+        if MULTI_DATA_SOURCE_AVAILABLE:
+            df = _MDS.get_index_daily(index_code, days)
+            if df is not None and not df.empty:
+                return df
+        return pd.DataFrame()
 
     @staticmethod
     def calculate_indicators(df: pd.DataFrame) -> pd.DataFrame:
         """计算技术指标"""
         if df.empty:
             return df
-
         close = df["close"]
         high = df["high"]
         low = df["low"]
         volume = df["volume"]
-
-        # 均线
         for period in [5, 10, 20, 60, 120]:
             df[f"ma_{period}"] = close.rolling(window=period).mean()
-
-        # MACD
         ema12 = close.ewm(span=12, adjust=False).mean()
         ema26 = close.ewm(span=26, adjust=False).mean()
         df["dif"] = ema12 - ema26
         df["dea"] = df["dif"].ewm(span=9, adjust=False).mean()
         df["macd_hist"] = 2 * (df["dif"] - df["dea"])
-
-        # RSI
         delta = close.diff()
         gain = delta.where(delta > 0, 0)
         loss = -delta.where(delta < 0, 0)
@@ -366,36 +236,21 @@ class DataProvider:
         avg_loss = loss.rolling(window=14).mean()
         rs = avg_gain / (avg_loss + 1e-10)
         df["rsi"] = 100 - 100 / (1 + rs)
-
-        # 布林带
         df["boll_mid"] = close.rolling(window=20).mean()
         boll_std = close.rolling(window=20).std()
         df["boll_upper"] = df["boll_mid"] + 2 * boll_std
         df["boll_lower"] = df["boll_mid"] - 2 * boll_std
-
-        # ATR
-        tr = pd.concat([
-            high - low,
-            abs(high - close.shift(1)),
-            abs(low - close.shift(1))
-        ], axis=1).max(axis=1)
+        tr = pd.concat([high - low, abs(high - close.shift(1)), abs(low - close.shift(1))], axis=1).max(axis=1)
         df["atr"] = tr.rolling(window=14).mean()
-
-        # 成交量MA
         df["vol_ma_5"] = volume.rolling(window=5).mean()
         df["vol_ma_20"] = volume.rolling(window=20).mean()
-
-        # 涨跌幅
         df["pct_change"] = close.pct_change() * 100
-
-        # KDJ (简化版)
         low_min = low.rolling(window=9).min()
         high_max = high.rolling(window=9).max()
         rsv = (close - low_min) / (high_max - low_min + 1e-10) * 100
         df["k"] = rsv.ewm(com=2, adjust=False).mean()
         df["d"] = df["k"].ewm(com=2, adjust=False).mean()
         df["j"] = 3 * df["k"] - 2 * df["d"]
-
         return df
 
 
@@ -679,7 +534,65 @@ class StrategyLearner:
         return new_knowledge
 
     def learn_from_ai(self, prompt: str = "生成一个适合A股的量化交易策略") -> Optional[StrategyKnowledge]:
-        """用AI生成/优化策略"""
+        """用AI生成/优化策略 — 统一LLM管理器"""
+        try:
+            from core.llm_manager import get_llm_manager
+            llm = get_llm_manager()
+            code = llm.generate_strategy(prompt)
+            if not code:
+                logger.warning("LLM管理器未返回结果，尝试直接调用Zhipu")
+                return self._learn_from_ai_fallback(prompt)
+
+            # 提取代码块
+            if "```python" in code:
+                code = code.split("```python")[1].split("```")[0].strip()
+            elif "```" in code:
+                code = code.split("```")[1].split("```")[0].strip()
+
+            if "class " not in code or "def next" not in code:
+                logger.warning(f"AI生成的代码不符合Backtrader格式: {code[:100]}")
+                return None
+
+            # 生成策略名
+            import re
+            m = re.search(r"class\s+(\w+Strategy)", code)
+            name = m.group(1) if m else f"AI策略_{len(self.knowledge_base)+1}"
+
+            # 获取使用的模型名
+            model_used = "多模型"
+            for key, cfg in llm.models.items():
+                if cfg.get("recommended"):
+                    model_used = cfg.get("name", key)
+                    break
+
+            kb = StrategyKnowledge(
+                name=name,
+                category="AI生成",
+                source=f"AI/{model_used}",
+                code=code,
+                description=prompt,
+                factors=["AI生成"],
+                quality_score=60.0,
+                learned_at=datetime.now().strftime("%Y-%m-%d"),
+            )
+            self.knowledge_base.append(kb)
+
+            self.learning_log.append(LearningRecord(
+                date=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                action="learn",
+                strategy=name,
+                result=f"AI生成（{model_used}）",
+                ai_insight=code[:200],
+            ))
+            self._save_data()
+            return kb
+
+        except Exception as e:
+            logger.error(f"AI策略生成失败: {e}")
+            return None
+
+    def _learn_from_ai_fallback(self, prompt: str) -> Optional[StrategyKnowledge]:
+        """Zhipu GLM 直接兜底调用"""
         from config import ZHIPU_API_KEY
         import requests
 
@@ -694,67 +607,44 @@ class StrategyLearner:
 
 只输出代码，不要其他文字。"""
 
-        try:
-            resp = requests.post(
-                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {ZHIPU_API_KEY}",
-                },
-                json={
-                    "model": "glm-4-flash",
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "temperature": 0.8,
-                    "max_tokens": 4000,
-                },
-                timeout=60,
-            )
-
-            result = resp.json()
-            code = result["choices"][0]["message"]["content"].strip()
-
-            # 提取代码块
-            if "```python" in code:
-                code = code.split("```python")[1].split("```")[0].strip()
-            elif "```" in code:
-                code = code.split("```")[1].split("```")[0].strip()
-
-            if "class " not in code or "def next" not in code:
-                return None
-
-            # 生成策略名
-            import re
-            m = re.search(r"class\s+(\w+Strategy)", code)
-            name = m.group(1) if m else f"AI策略_{len(self.knowledge_base)+1}"
-
-            kb = StrategyKnowledge(
-                name=name,
-                category="AI生成",
-                source="AI/GLM-4-Flash",
-                code=code,
-                description=prompt,
-                factors=["AI生成"],
-                quality_score=60.0,
-                learned_at=datetime.now().strftime("%Y-%m-%d"),
-            )
-            self.knowledge_base.append(kb)
-
-            self.learning_log.append(LearningRecord(
-                date=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                action="learn",
-                strategy=name,
-                result="AI生成新策略",
-                ai_insight=code[:200],
-            ))
-            self._save_data()
-            return kb
-
-        except Exception as e:
-            logger.error(f"AI策略生成失败: {e}")
+        resp = requests.post(
+            "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {ZHIPU_API_KEY}"},
+            json={
+                "model": "glm-4-flash",
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt},
+                ],
+                "temperature": 0.8,
+                "max_tokens": 4000,
+            },
+            timeout=90,
+        )
+        code = resp.json()["choices"][0]["message"]["content"].strip()
+        if "```python" in code:
+            code = code.split("```python")[1].split("```")[0].strip()
+        elif "```" in code:
+            code = code.split("```")[1].split("```")[0].strip()
+        if "class " not in code or "def next" not in code:
             return None
+
+        import re
+        m = re.search(r"class\s+(\w+Strategy)", code)
+        name = m.group(1) if m else f"AI策略_{len(self.knowledge_base)+1}"
+
+        kb = StrategyKnowledge(
+            name=name, category="AI生成", source="AI/GLM-4-Flash",
+            code=code, description=prompt, factors=["AI生成"],
+            quality_score=60.0, learned_at=datetime.now().strftime("%Y-%m-%d"),
+        )
+        self.knowledge_base.append(kb)
+        self.learning_log.append(LearningRecord(
+            date=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            action="learn", strategy=name, result="AI生成（Zhipu兜底）",
+        ))
+        self._save_data()
+        return kb
 
     def optimize_strategy(self, strategy_name: str, performance_data: Dict = None) -> Optional[StrategyKnowledge]:
         """用AI优化已有策略"""
@@ -796,56 +686,44 @@ class StrategyLearner:
 只输出优化后的完整Python代码。"""
 
         try:
-            resp = requests.post(
-                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {ZHIPU_API_KEY}",
-                },
-                json={
-                    "model": "glm-4-flash",
-                    "messages": [
-                        {"role": "system", "content": "你是量化策略优化专家。只输出优化后的代码。"},
-                        {"role": "user", "content": prompt},
-                    ],
-                    "temperature": 0.6,
-                    "max_tokens": 4000,
-                },
-                timeout=60,
-            )
-
-            code = resp.json()["choices"][0]["message"]["content"].strip()
-            if "```python" in code:
-                code = code.split("```python")[1].split("```")[0].strip()
-            elif "```" in code:
-                code = code.split("```")[1].split("```")[0].strip()
-
-            if "class " not in code:
+            from core.llm_manager import get_llm_manager
+            llm = get_llm_manager()
+            code = llm.optimize_strategy(target.code, performance_data)
+            if not code:
+                logger.warning("LLM优化未返回结果")
                 return None
-
-            # 记录优化历史
-            target.optimization_history.append({
-                "date": datetime.now().strftime("%Y-%m-%d"),
-                "old_code_hash": hashlib.md5(target.code.encode()).hexdigest()[:8],
-                "performance": performance_data,
-            })
-
-            target.code = code
-            target.last_optimized = datetime.now().strftime("%Y-%m-%d")
-
-            self.learning_log.append(LearningRecord(
-                date=datetime.now().strftime("%Y-%m-%d %H:%M"),
-                action="optimize",
-                strategy=strategy_name,
-                result="AI优化策略",
-                metrics=performance_data or {},
-            ))
-            self._save_data()
-            return target
-
         except Exception as e:
-            logger.error(f"策略优化失败: {e}")
+            logger.error(f"LLMManager调用失败: {e}")
             return None
+
+        # 提取代码块
+        if "```python" in code:
+            code = code.split("```python")[1].split("```")[0].strip()
+        elif "```" in code:
+            code = code.split("```")[1].split("```")[0].strip()
+
+        if "class " not in code:
+            return None
+
+        # 记录优化历史
+        target.optimization_history.append({
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "old_code_hash": hashlib.md5(target.code.encode()).hexdigest()[:8],
+            "performance": performance_data,
+        })
+
+        target.code = code
+        target.last_optimized = datetime.now().strftime("%Y-%m-%d")
+
+        self.learning_log.append(LearningRecord(
+            date=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            action="optimize",
+            strategy=strategy_name,
+            result="AI优化策略",
+            metrics=performance_data or {},
+        ))
+        self._save_data()
+        return target
 
     def get_best_strategies(self, top_n: int = 5) -> List[StrategyKnowledge]:
         """获取最优策略排名"""
@@ -1035,52 +913,29 @@ class QuantBrain:
 
     def _auto_learn(self, signals: List[TradeSignal]):
         """自动学习：让AI分析信号质量并优化策略"""
-        from config import ZHIPU_API_KEY
-        import requests
-
         signal_summary = "\n".join([
             f"- {s.stock_code} {s.direction} (置信度{s.confidence}%) {s.reason}"
             for s in signals[:10]
         ])
 
-        prompt = f"""分析以下A股交易信号的质量，并给出改进建议:
-
-{signal_summary}
-
-请简要分析:
-1. 哪些信号质量较高？
-2. 是否存在假信号风险？
-3. 如何提高信号准确率？
-
-用简洁的中文回答，100字以内。"""
+        try:
+            from core.llm_manager import get_llm_manager
+            llm = get_llm_manager()
+            insight = llm.analyze_signals(signal_summary)
+            if not insight:
+                insight = "AI分析暂时不可用"
+        except Exception:
+            insight = "AI分析暂时不可用"
 
         try:
-            resp = requests.post(
-                "https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {ZHIPU_API_KEY}",
-                },
-                json={
-                    "model": "glm-4-flash",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.3,
-                    "max_tokens": 500,
-                },
-                timeout=30,
-            )
-
-            insight = resp.json()["choices"][0]["message"]["content"].strip()
-
             self.learner.learning_log.append(LearningRecord(
                 date=datetime.now().strftime("%Y-%m-%d %H:%M"),
                 action="evaluate",
                 strategy="多策略",
                 result=f"分析了{len(signals)}个信号",
-                ai_insight=insight,
+                ai_insight=insight or "",
             ))
             self.learner._save_data()
-
         except Exception as e:
             logger.warning(f"自动学习失败: {e}")
 

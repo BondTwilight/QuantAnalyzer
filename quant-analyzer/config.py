@@ -52,25 +52,35 @@ SECTORS = {
 }
 
 # ══════════════════════════════════════════════
-# 🤖 AI 多模型配置 — v3.0 核心升级
+# 🤖 AI 多模型配置 — v4.0 全面升级
 # ══════════════════════════════════════════════
 
 # 免费模型层级：
-#   Tier 1 — 无需Key，开箱即用（部分需HF Token）
-#   Tier 2 — 需要免费注册获取API Key
+#   Tier 1 — 无需Key，开箱即用
+#   Tier 2 — 免费注册获取API Key
 #   Tier 3 — 付费或有限免费额度
 
 # ══════════════════════════════════════════════
-# 🤖 AI 模型配置 — 已接入智谱GLM
+# 🤖 AI 模型配置 — 已接入 4 家免费/低成本模型
 # ══════════════════════════════════════════════
 
-# 智谱API Key（已配置）
-ZHIPU_API_KEY = "f73b954ee7ea4e5e9f524130827628c7.pH5VtxD5rUe71JzQ"
+# 智谱API Key（已配置 ✅ 2026-04-04 更新）
+ZHIPU_API_KEY = "c304b850fa0f4aabb2adc062a7804023.AsHe1BGNWJ3kbVgr"
+
+# DeepSeek API Key（已配置 ✅ 2026-04-04 更新）
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "sk-e0992c60751f49a0998397b28632d1e9")
+
+# 硅基流动 API Key（已配置 ✅ 2026-04-04）
+SILICONFLOW_API_KEY = os.environ.get("SILICONFLOW_API_KEY", "sk-rmdmqfxevhyodfecqsbfswccxmmkjauuakbmwlhaarrmohhm")
+
+# Ollama 本地模型（无需Key，需本地安装 ollama）
+OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 
 AI_MODELS = {
-    # ═══ 主力模型: 智谱GLM（已配置Key，直接可用） ═══
+    # ═══ Tier 1: 智谱GLM（已配置Key，直接可用） ═══
     "glm-5": {
         "name": "🧠 智谱 GLM-5（旗舰）",
+        "provider": "zhipu",
         "tier": 1,
         "api_base": "https://open.bigmodel.cn/api/paas/v4",
         "api_key": ZHIPU_API_KEY,
@@ -82,9 +92,11 @@ AI_MODELS = {
         "desc": "旗舰模型！复杂分析/策略审查用",
         "compatible": "openai",
         "recommended": True,
+        "strengths": ["复杂推理", "策略分析", "代码生成"],
     },
     "glm-turbo": {
         "name": "⚡ 智谱 GLM-Turbo（快速）",
+        "provider": "zhipu",
         "tier": 1,
         "api_base": "https://open.bigmodel.cn/api/paas/v4",
         "api_key": ZHIPU_API_KEY,
@@ -96,45 +108,164 @@ AI_MODELS = {
         "desc": "快速模型！日常分析/批量任务用",
         "compatible": "openai",
         "recommended": True,
+        "strengths": ["快速响应", "批量处理", "日常分析"],
+    },
+
+    # ═══ Tier 2: DeepSeek（极低成本，推荐） ═══
+    "deepseek-v3": {
+        "name": "🔥 DeepSeek V3（旗舰）",
+        "provider": "deepseek",
+        "tier": 2,
+        "api_base": "https://api.deepseek.com",
+        "api_key": DEEPSEEK_API_KEY,
+        "model": "deepseek-chat",
+        "env_key": "DEEPSEEK_API_KEY",
+        "rate_limit": "¥1/M tokens（极便宜）",
+        "needs_key": True,
+        "key_url": "https://platform.deepseek.com/",
+        "desc": "国产旗舰！性价比最高，适合策略分析",
+        "compatible": "openai",
+        "recommended": True,
+        "strengths": ["长上下文", "代码能力强", "成本极低"],
+    },
+    "deepseek-coder": {
+        "name": "💻 DeepSeek Coder（代码）",
+        "provider": "deepseek",
+        "tier": 2,
+        "api_base": "https://api.deepseek.com",
+        "api_key": DEEPSEEK_API_KEY,
+        "model": "deepseek-coder",
+        "env_key": "DEEPSEEK_API_KEY",
+        "rate_limit": "¥1/M tokens",
+        "needs_key": True,
+        "key_url": "https://platform.deepseek.com/",
+        "desc": "代码专用！策略代码生成/优化极强",
+        "compatible": "openai",
+        "recommended": False,
+        "strengths": ["代码生成", "策略实现", "Bug修复"],
+    },
+
+    # ═══ Tier 2: 硅基流动（聚合多模型） ═══
+    "siliconflow-qwen": {
+        "name": "🌊 硅基流动 Qwen（免费）",
+        "provider": "siliconflow",
+        "tier": 2,
+        "api_base": "https://api.siliconflow.cn/v1",
+        "api_key": SILICONFLOW_API_KEY,
+        "model": "Qwen/Qwen2.5-72B-Instruct",
+        "env_key": "SILICONFLOW_API_KEY",
+        "rate_limit": "免费额度每日可用",
+        "needs_key": True,
+        "key_url": "https://siliconflow.cn/",
+        "desc": "免费额度！阿里Qwen72B大模型",
+        "compatible": "openai",
+        "recommended": False,
+        "strengths": ["大模型", "免费额度", "中文理解"],
+    },
+    "siliconflow-deepseek": {
+        "name": "🌊 硅基流动 DeepSeek（低价）",
+        "provider": "siliconflow",
+        "tier": 2,
+        "api_base": "https://api.siliconflow.cn/v1",
+        "api_key": SILICONFLOW_API_KEY,
+        "model": "deepseek-ai/DeepSeek-V2.5",
+        "env_key": "SILICONFLOW_API_KEY",
+        "rate_limit": "¥0.5/M tokens",
+        "needs_key": True,
+        "key_url": "https://siliconflow.cn/",
+        "desc": "低价好用的DeepSeek！聚合平台",
+        "compatible": "openai",
+        "recommended": False,
+        "strengths": ["低价", "稳定", "多模型切换"],
+    },
+
+    # ═══ Tier 3: Ollama 本地模型（完全免费） ═══
+    "ollama-qwen": {
+        "name": "🏠 Ollama Qwen（本地）",
+        "provider": "ollama",
+        "tier": 3,
+        "api_base": OLLAMA_BASE_URL,
+        "api_key": "",  # 不需要Key
+        "model": "qwen2.5:72b",
+        "env_key": "OLLAMA_BASE_URL",
+        "rate_limit": "本地运行，完全免费",
+        "needs_key": False,
+        "key_url": "https://ollama.com/",
+        "desc": "本地部署！需要安装Ollama + 下载模型",
+        "compatible": "ollama",
+        "recommended": False,
+        "strengths": ["完全免费", "隐私保护", "无API限制"],
+    },
+    "ollama-llama": {
+        "name": "🏠 Ollama Llama（本地）",
+        "provider": "ollama",
+        "tier": 3,
+        "api_base": OLLAMA_BASE_URL,
+        "api_key": "",
+        "model": "llama3.1:8b",
+        "env_key": "OLLAMA_BASE_URL",
+        "rate_limit": "本地运行，完全免费",
+        "needs_key": False,
+        "key_url": "https://ollama.com/",
+        "desc": "本地部署！Meta开源Llama3.1",
+        "compatible": "ollama",
+        "recommended": False,
+        "strengths": ["完全免费", "开源", "无限制调用"],
     },
 }
 
 # 默认使用的模型 (按优先级排序)
 DEFAULT_MODEL_PRIORITY = [
-    "glm-turbo",    # ⚡ 日常分析用快速模型（免费）
-    "glm-5",       # 🧠 复杂分析用旗舰模型
+    "glm-turbo",      # ⚡ 日常分析用快速模型（已配置Key）
+    "deepseek-v3",    # 🔥 DeepSeek旗舰（需配置Key，极便宜）
+    "glm-5",          # 🧠 复杂分析用旗舰模型
 ]
 
 # 协同分析配置: 哪些任务用哪些模型
 ANALYSIS_TASKS = {
     "strategy_code_parse": {
         "description": "策略代码解析",
-        "models": ["glm-turbo"],
+        "models": ["glm-turbo", "deepseek-coder"],
         "temperature": 0.3,
     },
     "backtest_analysis": {
         "description": "回测结果分析",
-        "models": ["glm-turbo"],
+        "models": ["glm-turbo", "deepseek-v3"],
         "temperature": 0.5,
     },
     "strategy_comparison": {
         "description": "策略对比",
-        "models": ["glm-5"],
+        "models": ["glm-5", "deepseek-v3"],
         "temperature": 0.4,
+    },
+    "strategy_generate": {
+        "description": "策略代码生成",
+        "models": ["deepseek-coder", "glm-5"],
+        "temperature": 0.8,
+    },
+    "strategy_optimize": {
+        "description": "策略优化",
+        "models": ["deepseek-v3", "glm-5"],
+        "temperature": 0.6,
     },
     "market_sentiment": {
         "description": "市场研判",
-        "models": ["glm-turbo"],
+        "models": ["glm-turbo", "deepseek-v3"],
         "temperature": 0.6,
     },
     "auto_learning": {
         "description": "自学习进化",
-        "models": ["glm-5"],
+        "models": ["glm-5", "deepseek-v3"],
         "temperature": 0.8,
     },
     "investment_advice": {
         "description": "投资建议",
         "models": ["glm-5"],
+        "temperature": 0.3,
+    },
+    "stock_diagnosis": {
+        "description": "AI诊断股票",
+        "models": ["glm-turbo", "deepseek-v3"],
         "temperature": 0.3,
     },
 }

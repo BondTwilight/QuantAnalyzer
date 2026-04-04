@@ -1,11 +1,10 @@
 """
-数据层 — BaoStock 数据获取 + SQLite 存储
-BaoStock 免费A股数据，无需API Key，数据稳定
+数据层 — 统一数据获取 + SQLite 存储
+优先使用 MultiDataSource（AkShare为主，BaoStock备用）
 """
 import sqlite3
 import pandas as pd
 import numpy as np
-import baostock as bs
 from datetime import datetime, timedelta
 from pathlib import Path
 import sys
@@ -17,207 +16,194 @@ from config import DB_PATH, DATA_DIR, STOCK_POOL, BENCHMARK, DEFAULT_PERIOD
 
 logger = logging.getLogger(__name__)
 
-# BaoStock 代码格式: sh.600519, sz.000001
-def _to_bs_code(ts_code: str) -> str:
-    """000001.SZ -> sz.000001"""
-    parts = ts_code.split(".")
-    if len(parts) == 2:
-        return f"{parts[1].lower()}.{parts[0]}"
-    return ts_code.lower()
-
-def _to_ts_code(bs_code: str) -> str:
-    """sh.600519 -> 600519.SH"""
-    parts = bs_code.split(".")
-    if len(parts) == 2:
-        return f"{parts[1]}.{parts[0].upper()}"
-    return bs_code.upper()
-
 
 class DataFetcher:
-    """BaoStock 数据获取器"""
+    """数据获取器 — 委托给 MultiDataSource"""
 
     def __init__(self):
-        self._logged_in = False
+        self._use_multidata = False
+        try:
+            from core.multi_data_source import MultiDataSource
+            self._mds = MultiDataSource
+            self._use_multidata = True
+            logger.info("DataFetcher: 使用 MultiDataSource (AkShare主)")
+        except ImportError:
+            logger.warning("DataFetcher: MultiDataSource不可用，使用BaoStock")
 
-    def _ensure_login(self):
-        if not self._logged_in:
-            lg = bs.login()
-            if lg.error_code != "0":
-                raise ConnectionError(f"BaoStock login failed: {lg.error_msg}")
-            self._logged_in = True
-            logger.info("BaoStock logged in")
-
-    def _logout(self):
-        if self._logged_in:
-            bs.logout()
-            self._logged_in = False
+    def _bs_login(self):
+        """BaoStock登录（仅作为备用）"""
+        if not self._use_multidata:
+            try:
+                import baostock as bs
+                if not hasattr(self, '_bs_logged_in') or not self._bs_logged_in:
+                    lg = bs.login()
+                    if lg.error_code != "0":
+                        raise ConnectionError(f"BaoStock login failed: {lg.error_msg}")
+                    self._bs_logged_in = True
+                    logger.info("BaoStock logged in")
+            except Exception as e:
+                raise ConnectionError(f"BaoStock不可用: {e}")
 
     def get_stock_daily(self, ts_code: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
         """获取股票日线数据"""
+        code = ts_code.split(".")[0] if "." in ts_code else ts_code
+
+        # 优先 MultiDataSource
+        if self._use_multidata:
+            df = self._mds.get_stock_daily(code, start_date=start_date, end_date=end_date)
+            if df is not None and not df.empty:
+                df["ts_code"] = ts_code
+                logger.info(f"Fetched {len(df)} rows for {ts_code} via MultiDataSource")
+                return df
+
+        # 备用：BaoStock
         try:
-            self._ensure_login()
-            bs_code = _to_bs_code(ts_code)
+            self._bs_login()
+            import baostock as bs
+            bs_code = code
+            if code.startswith("6"):
+                bs_code = f"sh.{code}"
+            else:
+                bs_code = f"sz.{code}"
 
-            df = bs.query_history_k_data_plus(
-                bs_code,
-                "date,open,high,low,close,volume",
-                start_date=start_date or (datetime.now() - timedelta(days=DEFAULT_PERIOD)).strftime("%Y-%m-%d"),
-                end_date=end_date or datetime.now().strftime("%Y-%m-%d"),
-                frequency="d",
-                adjustflag="2"  # 前复权
+            _start = start_date or (datetime.now() - timedelta(days=DEFAULT_PERIOD)).strftime("%Y-%m-%d")
+            _end = end_date or datetime.now().strftime("%Y-%m-%d")
+
+            rs = bs.query_history_k_data_plus(
+                bs_code, "date,open,high,low,close,volume",
+                start_date=_start, end_date=_end,
+                frequency="d", adjustflag="2"
             )
-
             rows = []
-            if df is None:
-                logger.warning(f"BaoStock返回None for {ts_code}")
+            if rs is None:
                 return pd.DataFrame()
-            while df.error_code == "0" and df.next():
-                rows.append(df.get_row_data())
-
+            while rs.error_code == "0" and rs.next():
+                rows.append(rs.get_row_data())
             if not rows:
-                logger.warning(f"No data for {ts_code}")
                 return pd.DataFrame()
 
             data = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
-            # 转换数据类型
             for col in ["open", "high", "low", "close", "volume"]:
                 data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0)
             data["date"] = pd.to_datetime(data["date"])
             data["ts_code"] = ts_code
-            data = data.set_index("date")
             data = data.dropna(subset=["close"])
-            data = data[data["close"] > 0]  # 过滤无效数据
-
-            logger.info(f"Fetched {len(data)} rows for {ts_code}")
+            data = data[data["close"] > 0]
+            logger.info(f"Fetched {len(data)} rows for {ts_code} via BaoStock")
             return data
-
         except Exception as e:
             logger.error(f"获取 {ts_code} 日线数据失败: {e}")
             return pd.DataFrame()
 
     def get_index_daily(self, index_code: str = "000300", start_date: str = None, end_date: str = None) -> pd.DataFrame:
-        """获取指数日线数据 (沪深300等)"""
+        """获取指数日线数据"""
+        code = index_code.replace("sh.", "").replace("sz.", "")
+
+        if self._use_multidata:
+            df = self._mds.get_index_daily(code, days=DEFAULT_PERIOD)
+            if df is not None and not df.empty:
+                logger.info(f"Fetched {len(df)} rows for index {index_code}")
+                return df
+
+        # 备用BaoStock
         try:
-            self._ensure_login()
-            # BaoStock 指数代码: sh.000300
-            bs_code = f"sh.{index_code}"
+            self._bs_login()
+            import baostock as bs
+            bs_code = f"sh.{code}"
+            _start = start_date or (datetime.now() - timedelta(days=DEFAULT_PERIOD)).strftime("%Y-%m-%d")
+            _end = end_date or datetime.now().strftime("%Y-%m-%d")
 
-            df = bs.query_history_k_data_plus(
-                bs_code,
-                "date,open,high,low,close,volume",
-                start_date=start_date or (datetime.now() - timedelta(days=DEFAULT_PERIOD)).strftime("%Y-%m-%d"),
-                end_date=end_date or datetime.now().strftime("%Y-%m-%d"),
-                frequency="d",
-                adjustflag="3"  # 不复权
+            rs = bs.query_history_k_data_plus(
+                bs_code, "date,open,high,low,close,volume",
+                start_date=_start, end_date=_end,
+                frequency="d", adjustflag="3"
             )
-
             rows = []
-            while df.error_code == "0" and df.next():
-                rows.append(df.get_row_data())
-
+            if rs is None:
+                return pd.DataFrame()
+            while rs.error_code == "0" and rs.next():
+                rows.append(rs.get_row_data())
             if not rows:
                 return pd.DataFrame()
-
             data = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
             for col in ["open", "high", "low", "close", "volume"]:
                 data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0)
             data["date"] = pd.to_datetime(data["date"])
-            data = data.set_index("date")
             data = data[data["close"] > 0]
-
-            logger.info(f"Fetched {len(data)} rows for index {index_code}")
             return data
-
         except Exception as e:
             logger.error(f"获取指数 {index_code} 数据失败: {e}")
             return pd.DataFrame()
 
     @staticmethod
     def get_stock_list() -> pd.DataFrame:
-        """获取A股实时行情 (通过baostock)"""
+        """获取A股列表"""
         try:
+            from core.multi_data_source import MultiDataSource
+            df = MultiDataSource.get_stock_list()
+            if df is not None and not df.empty:
+                return df
+        except:
+            pass
+
+        try:
+            import baostock as bs
             bs.login()
             rs = bs.query_stock_basic()
             rows = []
             if rs is None:
-                logger.warning("BaoStock返回None for stock list")
                 bs.logout()
                 return pd.DataFrame()
             while rs.error_code == "0" and rs.next():
                 rows.append(rs.get_row_data())
             bs.logout()
             if rows:
-                df = pd.DataFrame(rows)
-                return df
-            return pd.DataFrame()
+                return pd.DataFrame(rows)
         except Exception as e:
             logger.error(f"获取股票列表失败: {e}")
-            return pd.DataFrame()
+        return pd.DataFrame()
 
     def get_sector_index(self, sector_name: str) -> pd.DataFrame:
-        """获取行业板块指数 — 用代表性ETF替代"""
-        sector_etf = {
-            "银行": "sh.512800",  # 银行ETF
-            "白酒": "sz.159928",  # 白酒ETF
-            "医药": "sz.159938",  # 医药ETF
-            "消费": "sz.159928",  # 白酒ETF代消费
-            "科技": "sz.159915",  # 创业板ETF
-            "新能源": "sz.159824",  # 新能源车ETF
-        }
-        bs_code = sector_etf.get(sector_name)
-        if not bs_code:
-            return pd.DataFrame()
-
+        """获取行业板块指数 — 用AkShare"""
         try:
-            self._ensure_login()
-            df = bs.query_history_k_data_plus(
-                bs_code, "date,open,high,low,close,volume",
-                start_date=(datetime.now() - timedelta(days=DEFAULT_PERIOD)).strftime("%Y-%m-%d"),
-                end_date=datetime.now().strftime("%Y-%m-%d"),
-                frequency="d", adjustflag="2"
+            from core.multi_data_source import AkShareSource
+            df = AkShareSource.get_stock_daily(
+                {"银行": "601398", "白酒": "000858", "医药": "000538",
+                 "消费": "000858", "科技": "300750", "新能源": "300750"}.get(sector_name, "000001"),
+                days=DEFAULT_PERIOD
             )
-            rows = []
-            if df is None:
-                logger.warning(f"BaoStock返回None for sector {sector_name}")
-                return pd.DataFrame()
-            while df.error_code == "0" and df.next():
-                rows.append(df.get_row_data())
-            if not rows:
-                return pd.DataFrame()
-            data = pd.DataFrame(rows, columns=["date", "open", "high", "low", "close", "volume"])
-            for col in ["open", "high", "low", "close", "volume"]:
-                data[col] = pd.to_numeric(data[col], errors="coerce").fillna(0)
-            data["date"] = pd.to_datetime(data["date"])
-            data = data.set_index("date")
-            return data[data["close"] > 0]
-        except Exception as e:
-            logger.error(f"获取行业 {sector_name} 数据失败: {e}")
+            return df
+        except:
             return pd.DataFrame()
 
     def close(self):
-        self._logout()
+        if hasattr(self, '_bs_logged_in') and self._bs_logged_in:
+            try:
+                import baostock as bs
+                bs.logout()
+            except:
+                pass
 
 
 class Database:
-    """SQLite 数据库操作"""
+    """SQLite 数据库操作（优化版）"""
 
     def __init__(self, db_path=None):
         self.db_path = db_path or DB_PATH
-        self.conn = None
         self._ensure_dir()
+        
+        # 导入数据库优化器
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        from core.database_optimizer import get_database_optimizer
+        self.optimizer = get_database_optimizer(str(self.db_path))
+        
         self._init_tables()
 
     def _ensure_dir(self):
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def _get_conn(self) -> sqlite3.Connection:
-        if self.conn is None:
-            self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
-            self.conn.row_factory = sqlite3.Row
-        return self.conn
-
     def _init_tables(self):
-        conn = self._get_conn()
+        conn = self.optimizer.get_connection()
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -299,109 +285,152 @@ class Database:
         conn.commit()
 
     def save_backtest_result(self, result: dict):
-        conn = self._get_conn()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO backtest_results (
-                strategy_name, stock_code, start_date, end_date,
-                initial_cash, final_value, total_return, annual_return,
-                max_drawdown, sharpe_ratio, sortino_ratio, calmar_ratio,
-                win_rate, profit_loss_ratio, total_trades, trade_frequency,
-                beta, volatility
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            result.get("strategy_name"), result.get("stock_code"),
-            result.get("start_date"), result.get("end_date"),
-            result.get("initial_cash"), result.get("final_value"),
-            result.get("total_return"), result.get("annual_return"),
-            result.get("max_drawdown"), result.get("sharpe_ratio"),
-            result.get("sortino_ratio"), result.get("calmar_ratio"),
-            result.get("win_rate"), result.get("profit_loss_ratio"),
-            result.get("total_trades"), result.get("trade_frequency"),
-            result.get("beta"), result.get("volatility"),
-        ))
-        conn.commit()
-        return cursor.lastrowid
+        """保存回测结果（批量插入优化）"""
+        data = [{
+            "strategy_name": result.get("strategy_name"),
+            "stock_code": result.get("stock_code"),
+            "start_date": result.get("start_date"),
+            "end_date": result.get("end_date"),
+            "initial_cash": result.get("initial_cash"),
+            "final_value": result.get("final_value"),
+            "total_return": result.get("total_return"),
+            "annual_return": result.get("annual_return"),
+            "max_drawdown": result.get("max_drawdown"),
+            "sharpe_ratio": result.get("sharpe_ratio"),
+            "sortino_ratio": result.get("sortino_ratio"),
+            "calmar_ratio": result.get("calmar_ratio"),
+            "win_rate": result.get("win_rate"),
+            "profit_loss_ratio": result.get("profit_loss_ratio"),
+            "total_trades": result.get("total_trades"),
+            "trade_frequency": result.get("trade_frequency"),
+            "beta": result.get("beta"),
+            "volatility": result.get("volatility")
+        }]
+        
+        inserted = self.optimizer.batch_insert("backtest_results", data)
+        return inserted
 
     def save_daily_values(self, strategy_name: str, df: pd.DataFrame):
-        conn = self._get_conn()
+        """保存每日净值（批量插入优化）"""
+        if df.empty:
+            return
+        
+        data = []
         for idx, row in df.iterrows():
-            try:
-                conn.execute("""
-                    INSERT OR REPLACE INTO daily_values (strategy_name, date, portfolio_value, benchmark_value, drawdown, cash, position)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    strategy_name,
-                    idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx),
-                    row.get("portfolio_value", 0),
-                    row.get("benchmark_value", 0),
-                    row.get("drawdown", 0),
-                    row.get("cash", 0),
-                    row.get("position", 0),
-                ))
-            except Exception as e:
-                logger.warning(f"保存每日净值失败 {idx}: {e}")
-        conn.commit()
+            data.append({
+                "strategy_name": strategy_name,
+                "date": idx.strftime("%Y-%m-%d") if hasattr(idx, "strftime") else str(idx),
+                "portfolio_value": row.get("portfolio_value", 0),
+                "benchmark_value": row.get("benchmark_value", 0),
+                "drawdown": row.get("drawdown", 0),
+                "cash": row.get("cash", 0),
+                "position": row.get("position", 0)
+            })
+        
+        self.optimizer.batch_insert("daily_values", data, batch_size=50)
 
     def save_trades(self, strategy_name: str, trades: list):
-        conn = self._get_conn()
+        """保存交易记录（批量插入优化）"""
+        if not trades:
+            return
+        
+        data = []
         for t in trades:
-            conn.execute("""
-                INSERT INTO trade_records (strategy_name, date, action, stock_code, price, quantity, commission, reason)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                strategy_name, t.get("date"), t.get("action"),
-                t.get("stock_code"), t.get("price"), t.get("quantity"),
-                t.get("commission"), t.get("reason"),
-            ))
-        conn.commit()
+            data.append({
+                "strategy_name": strategy_name,
+                "date": t.get("date"),
+                "action": t.get("action"),
+                "stock_code": t.get("stock_code"),
+                "price": t.get("price"),
+                "quantity": t.get("quantity"),
+                "commission": t.get("commission"),
+                "reason": t.get("reason")
+            })
+        
+        self.optimizer.batch_insert("trade_records", data, batch_size=50)
 
-    def get_backtest_results(self, strategy_name=None) -> pd.DataFrame:
-        conn = self._get_conn()
+    def get_backtest_results(self, strategy_name=None, page: int = 1, page_size: int = 20) -> Dict[str, Any]:
+        """获取回测结果（分页优化）"""
         if strategy_name:
-            df = pd.read_sql(
-                "SELECT * FROM backtest_results WHERE strategy_name = ? ORDER BY created_at DESC",
-                conn, params=(strategy_name,)
-            )
+            query = "SELECT * FROM backtest_results WHERE strategy_name = ?"
+            params = (strategy_name,)
         else:
-            df = pd.read_sql("SELECT * FROM backtest_results ORDER BY created_at DESC", conn)
-        return df
-
-    def get_daily_values(self, strategy_name: str) -> pd.DataFrame:
-        conn = self._get_conn()
-        df = pd.read_sql(
-            "SELECT * FROM daily_values WHERE strategy_name = ? ORDER BY date",
-            conn, params=(strategy_name,)
+            query = "SELECT * FROM backtest_results"
+            params = ()
+        
+        result = self.optimizer.execute_paginated_query(
+            query, params, page=page, page_size=page_size, 
+            order_by="created_at DESC"
         )
-        if not df.empty:
-            df["date"] = pd.to_datetime(df["date"])
-            df = df.set_index("date")
-        return df
+        
+        return result
 
-    def get_latest_results(self) -> pd.DataFrame:
-        conn = self._get_conn()
-        df = pd.read_sql("""
+    def get_daily_values(self, strategy_name: str, page: int = 1, page_size: int = 100) -> Dict[str, Any]:
+        """获取每日净值（分页优化）"""
+        query = "SELECT * FROM daily_values WHERE strategy_name = ?"
+        params = (strategy_name,)
+        
+        result = self.optimizer.execute_paginated_query(
+            query, params, page=page, page_size=page_size,
+            order_by="date DESC"
+        )
+        
+        # 转换为DataFrame格式（兼容旧代码）
+        if result["data"]:
+            df = pd.DataFrame(result["data"])
+            if not df.empty:
+                df["date"] = pd.to_datetime(df["date"])
+                df = df.set_index("date")
+            result["data"] = df
+        
+        return result
+
+    def get_latest_results(self, limit: int = 10) -> pd.DataFrame:
+        """获取最新回测结果（缓存优化）"""
+        query = """
             SELECT * FROM backtest_results
             WHERE created_at IN (
                 SELECT MAX(created_at) FROM backtest_results GROUP BY strategy_name
             )
             ORDER BY annual_return DESC
-        """, conn)
-        return df
+            LIMIT ?
+        """
+        
+        results = self.optimizer.execute_query(query, (limit,), use_cache=True, cache_ttl=60)
+        
+        if results:
+            return pd.DataFrame(results)
+        return pd.DataFrame()
 
     def save_ai_report(self, strategy_name: str, report_date: str, provider: str,
                        analysis_type: str, content: str):
-        conn = self._get_conn()
-        conn.execute("""
-            INSERT INTO ai_reports (strategy_name, report_date, provider, analysis_type, content)
-            VALUES (?, ?, ?, ?, ?)
-        """, (strategy_name, report_date, provider, analysis_type, content))
-        conn.commit()
+        """保存AI报告（批量插入优化）"""
+        data = [{
+            "strategy_name": strategy_name,
+            "report_date": report_date,
+            "provider": provider,
+            "analysis_type": analysis_type,
+            "content": content
+        }]
+        
+        self.optimizer.batch_insert("ai_reports", data)
+
+    def get_query_performance_report(self) -> Dict[str, Any]:
+        """获取查询性能报告"""
+        return self.optimizer.get_query_performance_report()
+
+    def optimize_database(self):
+        """优化数据库"""
+        tables = ["backtest_results", "daily_values", "trade_records", "ai_reports", "strategy_params"]
+        for table in tables:
+            try:
+                self.optimizer.optimize_table(table)
+            except:
+                pass
 
     def close(self):
-        if self.conn:
-            self.conn.close()
-            self.conn = None
+        """关闭数据库连接"""
+        self.optimizer.close_connections()
 
 
 # ── 全局数据库实例 ──
