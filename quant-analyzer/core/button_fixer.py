@@ -184,14 +184,19 @@ class ButtonResponseFixer:
         button_kwargs.pop("key", None)
         key = f"action_btn_{hash(str(action_func)) & 0xFFFFFFFF}"
         
-        # 兼容不同Streamlit版本：旧版不支持type参数
+        # 兼容不同Streamlit版本：type参数处理
         type_val = button_kwargs.pop("type", None)
         
         try:
             clicked = st.button(label, key=key, type=type_val, **button_kwargs)
-        except TypeError:
-            # 旧版Streamlit不支持type参数，重试不带type
-            clicked = st.button(label, key=key, **button_kwargs)
+        except TypeError as e:
+            err_msg = str(e)
+            if "type" in err_msg:
+                # 新版要求type必须是primary/secondary/tertiary，默认传primary
+                clicked = st.button(label, key=key, type="primary", **button_kwargs)
+            else:
+                # 旧版不支持type参数，重试不带type
+                clicked = st.button(label, key=key, **button_kwargs)
         
         if clicked:
             try:
