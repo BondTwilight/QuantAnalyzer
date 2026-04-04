@@ -1917,16 +1917,16 @@ class MyStrategy(bt.Strategy):
                         )
                         st.plotly_chart(fig, use_container_width=True)
                 return True
-            
-            if ButtonResponseFixer.create_action_button(
-                "▶️ 运行回测",
-                run_backtest_action,
-                success_msg="回测任务已开始",
-                error_msg="启动回测失败",
-                type="primary",
-                use_container_width=True
-            ):
-                pass
+
+        if ButtonResponseFixer.create_action_button(
+            "▶️ 运行回测",
+            run_backtest_action,
+            success_msg="回测任务已开始",
+            error_msg="启动回测失败",
+            type="primary",
+            use_container_width=True
+        ):
+            pass
 
     with tab_strategy:
         st.markdown("### 内置策略快速回测")
