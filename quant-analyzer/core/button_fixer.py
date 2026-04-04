@@ -180,9 +180,18 @@ class ButtonResponseFixer:
         Returns:
             bool: 是否成功执行
         """
+        # 避免key重复传入
+        button_kwargs.pop("key", None)
         key = f"action_btn_{hash(str(action_func)) & 0xFFFFFFFF}"
         
-        clicked = st.button(label, key=key, **button_kwargs)
+        # 兼容不同Streamlit版本：旧版不支持type参数
+        type_val = button_kwargs.pop("type", None)
+        
+        try:
+            clicked = st.button(label, key=key, type=type_val, **button_kwargs)
+        except TypeError:
+            # 旧版Streamlit不支持type参数，重试不带type
+            clicked = st.button(label, key=key, **button_kwargs)
         
         if clicked:
             try:
