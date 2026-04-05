@@ -191,34 +191,40 @@ CATEGORY_MAP = {
 
 def generate_demo_factor_data(factor_name: str, days: int = 252):
     """生成因子的演示数据（模拟真实因子分布特征）"""
-    np.random.seed(hash(factor_name) % 2**31)
-    dates = pd.bdate_range(end=datetime.now(), periods=days)
+    np.random.seed(abs(hash(factor_name)) % (2**31))
     
-    # 不同类型的因子有不同的分布特征
+    # 先生成基础数据
     if "RSI" in factor_name:
-        data = np.clip(np.random.normal(50, 15, days), 0, 100)
+        base_data = np.clip(np.random.normal(50, 15, days), 0, 100)
     elif "corr" in factor_name.lower():
-        data = np.random.normal(0, 0.3, days)
-        data = np.clip(data, -1, 1)
+        base_data = np.random.normal(0, 0.3, days)
+        base_data = np.clip(base_data, -1, 1)
     elif "rank" in factor_name.lower():
-        data = np.random.uniform(0, 1, days)
+        base_data = np.random.uniform(0, 1, days)
     elif "vol" in factor_name.lower() or "std" in factor_name.lower() or "ATR" in factor_name:
-        data = abs(np.random.normal(0.02, 0.015, days))
+        base_data = abs(np.random.normal(0.02, 0.015, days))
     elif "momentum" in factor_name.lower() or "delta" in factor_name.lower():
-        data = np.random.normal(0, 0.03, days)
+        base_data = np.random.normal(0, 0.03, days)
     else:
-        data = np.random.normal(0, 1, days)
+        base_data = np.random.normal(0, 1, days)
     
-    # 添加一点自相关性让数据更真实
+    # 添加自相关性（保证每次操作后重新截断到 days 长度）
+    data = base_data.astype(float)
     for _ in range(3):
-        data = pd.Series(data).rolling(3, min_periods=1).mean().values + np.random.normal(0, 0.1, days)
+        smoothed = pd.Series(data).rolling(3, min_periods=1).mean().values
+        noise = np.random.normal(0, 0.1, len(smoothed))
+        data = (smoothed + noise)[:days]  # 强制对齐长度
     
+    # 构建DataFrame
+    dates = pd.bdate_range(end=datetime.now(), periods=days)
     df = pd.DataFrame({
-        '日期': dates,
+        '日期': dates[:len(data)],       # 日期和数据严格对齐
         '因子值': data,
     })
-    # 计算模拟的未来收益
-    df['未来1日收益'] = df['因子值'].shift(-1) * 0.02 + np.random.normal(0, 0.015, days)
+    # 计算模拟的未来收益（同样严格对齐）
+    n = len(df)
+    ret_noise = np.random.normal(0, 0.015, n)
+    df['未来1日收益'] = df['因子值'].shift(-1) * 0.02 + ret_noise[:n]
     return df.dropna()
 
 def calculate_ic(factor_values: pd.Series, returns: pd.Series, window: int = 20):
