@@ -18,3 +18,10 @@
 - git push origin master: 成功 (fd41464..b5e1d8a)
 - git push hf master: 失败 (Authentication failed — HF 不再支持密码认证，需要配置 access token 或 SSH key)
 - 结果: push origin 成功但 hf 失败（连续两次失败，HF 认证问题需人工修复）
+
+## 2026-04-05 16:57
+- 网络测试: GitHub TCP 443 连通 (TcpTestSucceeded: True)
+- 工作树干净，无未提交更改
+- git push origin master: 成功 (Everything up-to-date)
+- git push hf master: 失败 (Authentication failed — HF 不再支持密码认证，需配置 access token 或 SSH key)
+- 结果: push origin 成功但 hf 失败（连续三次失败，HF 认证问题需人工修复）

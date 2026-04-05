@@ -1,0 +1,291 @@
+# 闭环量化交易系统配置
+# 版本: 1.0.0
+# 创建时间: 2026-04-05
+
+# 仓位管理配置
+position_config:
+  default_method: "fixed"  # 默认仓位管理方法
+  fixed_position_size: 0.1  # 固定仓位大小（10%）
+  max_position_per_stock: 0.2  # 单只股票最大仓位（20%）
+  max_total_position: 0.8  # 总仓位最大限制（80%）
+  position_methods:  # 可用的仓位管理方法
+    - "fixed"  # 固定仓位
+    - "kelly"  # 凯利公式
+    - "volatility"  # 波动率调整
+    - "risk_parity"  # 风险平价
+    - "pyramid"  # 金字塔加仓
+    - "grid"  # 网格交易
+  
+  # 凯利公式参数
+  kelly_config:
+    win_rate: 0.55  # 胜率
+    avg_win: 0.15  # 平均盈利
+    avg_loss: 0.1  # 平均亏损
+  
+  # 波动率调整参数
+  volatility_config:
+    lookback_days: 20  # 回看天数
+    target_volatility: 0.2  # 目标波动率
+  
+  # 风险平价参数
+  risk_parity_config:
+    risk_budget_method: "equal"  # 风险预算分配方法
+    correlation_lookback: 60  # 相关性回看天数
+
+# 风险管理配置
+risk_config:
+  max_drawdown_limit: 0.15  # 最大回撤限制（15%）
+  daily_loss_limit: 0.05  # 单日亏损限制（5%）
+  position_risk_limit: 0.02  # 单笔交易风险限制（2%）
+  var_confidence: 0.95  # VaR置信度
+  cvar_confidence: 0.99  # CVaR置信度
+  
+  stop_loss_methods:  # 止损方法
+    - "fixed"  # 固定止损
+    - "trailing"  # 移动止损
+    - "atr"  # ATR止损
+    - "volatility"  # 波动率止损
+  
+  # 固定止损参数
+  fixed_stop_loss:
+    stop_loss_pct: 0.08  # 止损比例（8%）
+    take_profit_pct: 0.2  # 止盈比例（20%）
+  
+  # 移动止损参数
+  trailing_stop_loss:
+    activation_pct: 0.1  # 激活比例（10%）
+    trail_pct: 0.05  # 跟踪比例（5%）
+  
+  # ATR止损参数
+  atr_stop_loss:
+    atr_multiplier: 2.0  # ATR乘数
+    lookback_period: 14  # ATR计算周期
+  
+  # 仓位 sizing 方法
+  position_sizing_methods:
+    - "fixed_risk"  # 固定风险
+    - "percent_risk"  # 百分比风险
+    - "optimal_f"  # 最优f
+  
+  # 固定风险参数
+  fixed_risk_sizing:
+    risk_per_trade: 1000  # 每笔交易风险金额
+  
+  # 百分比风险参数
+  percent_risk_sizing:
+    risk_percent: 0.01  # 每笔交易风险百分比（1%）
+
+# 回测配置
+backtest_config:
+  initial_capital: 1000000  # 初始资金（100万）
+  commission_rate: 0.0003  # 佣金率（万三）
+  slippage_rate: 0.0001  # 滑点率（万分之一）
+  benchmark: "000300.SH"  # 基准指数（沪深300）
+  
+  # 回测时间范围
+  start_date: "2023-01-01"
+  end_date: "2024-12-31"
+  
+  # 数据频率
+  data_frequency: "daily"  # daily, hourly, minute
+  
+  # 绩效指标
+  performance_metrics:
+    - "total_return"  # 总收益
+    - "annual_return"  # 年化收益
+    - "sharpe_ratio"  # 夏普比率
+    - "max_drawdown"  # 最大回撤
+    - "win_rate"  # 胜率
+    - "profit_factor"  # 盈利因子
+    - "calmar_ratio"  # 卡玛比率
+  
+  # 交易成本模型
+  transaction_cost_model:
+    commission_type: "percentage"  # 百分比佣金
+    min_commission: 5.0  # 最低佣金（5元）
+    stamp_tax_rate: 0.001  # 印花税率（千一）
+    transfer_fee_rate: 0.00002  # 过户费率（十万分之二）
+  
+  # 滑点模型
+  slippage_model:
+    slippage_type: "percentage"  # 百分比滑点
+    fixed_slippage: 0.01  # 固定滑点（1分钱）
+  
+  # 市场限制
+  market_constraints:
+    price_limit_pct: 0.1  # 涨跌停限制（10%）
+    tplus1: true  # T+1交易制度
+    min_trade_unit: 100  # 最小交易单位（100股）
+
+# 交易接口配置
+trading_config:
+  interface_type: "simulation"  # 接口类型：simulation, qmt, easytrader, ths
+  
+  # 模拟交易配置
+  simulation_config:
+    initial_capital: 1000000  # 初始资金
+    commission_rate: 0.0003  # 佣金率
+    slippage_rate: 0.0001  # 滑点率
+    enable_short_selling: false  # 是否允许卖空
+    enable_margin_trading: false  # 是否允许融资融券
+  
+  # QMT配置（需要安装QMT）
+  qmt_config:
+    account: ""  # 账号
+    password: ""  # 密码
+    server: "127.0.0.1"  # 服务器地址
+    port: 10000  # 端口
+    path: "C:/国金QMT交易端/userdata_mini"  # QMT路径
+  
+  # Easytrader配置
+  easytrader_config:
+    broker: "yh"  # 券商：yh(银河), ht(华泰), gf(广发)
+    account: ""  # 账号
+    password: ""  # 密码
+    comm_password: ""  # 通讯密码
+  
+  # 同花顺配置
+  ths_config:
+    account: ""  # 账号
+    password: ""  # 密码
+    exe_path: "C:/同花顺/xiadan.exe"  # 下单程序路径
+  
+  # 交易参数
+  trading_params:
+    order_type: "limit"  # 订单类型：limit, market
+    price_type: "current"  # 价格类型：current, bid, ask
+    timeout_seconds: 30  # 下单超时时间
+    retry_times: 3  # 重试次数
+
+# 监控报警配置
+monitor_config:
+  # 报警渠道
+  alert_channels:
+    - "log"  # 日志
+    - "email"  # 邮件
+    - "wechat"  # 微信（需要配置）
+    - "telegram"  # Telegram（需要配置）
+  
+  # 邮件配置
+  email_config:
+    smtp_server: "smtp.example.com"
+    smtp_port: 587
+    username: "your_email@example.com"
+    password: "your_password"
+    recipients:
+      - "recipient1@example.com"
+      - "recipient2@example.com"
+    ssl: true
+  
+  # 微信配置（需要企业微信）
+  wechat_config:
+    corp_id: ""
+    corp_secret: ""
+    agent_id: 1000001
+    to_user: "@all"
+  
+  # 监控规则
+  monitoring_rules:
+    # 绩效监控
+    daily_loss_threshold: 0.03  # 单日亏损阈值（3%）
+    drawdown_threshold: 0.1  # 回撤阈值（10%）
+    sharpe_threshold: 1.0  # 夏普比率阈值
+    win_rate_threshold: 0.5  # 胜率阈值（50%）
+    
+    # 风险监控
+    position_concentration_threshold: 0.3  # 持仓集中度阈值（30%）
+    sector_concentration_threshold: 0.4  # 行业集中度阈值（40%）
+    liquidity_threshold: 1000000  # 流动性阈值（100万）
+    
+    # 系统监控
+    cpu_threshold: 80  # CPU使用率阈值（80%）
+    memory_threshold: 85  # 内存使用率阈值（85%）
+    disk_threshold: 90  # 磁盘使用率阈值（90%）
+    network_latency_threshold: 100  # 网络延迟阈值（100ms）
+  
+  # 监控频率
+  check_interval_minutes: 5  # 检查间隔（分钟）
+  performance_check_hours: 24  # 绩效检查间隔（小时）
+  system_check_hours: 1  # 系统检查间隔（小时）
+  
+  # 报警抑制
+  alert_suppression:
+    same_alert_minutes: 30  # 相同报警抑制时间（30分钟）
+    max_alerts_per_hour: 10  # 每小时最大报警数
+
+# 自动优化配置
+optimization_config:
+  # 优化频率
+  optimization_frequency: "weekly"  # weekly, monthly, quarterly
+  
+  # 优化方法
+  optimization_method: "random_search"  # grid_search, random_search, bayesian_optimization, genetic_algorithm
+  
+  # 优化参数
+  max_iterations: 100  # 最大迭代次数
+  early_stopping_rounds: 10  # 早停轮数
+  validation_split: 0.2  # 验证集比例
+  scoring_metric: "sharpe_ratio"  # 评分指标
+  
+  # 模型更新
+  model_update_frequency: "monthly"  # 模型更新频率
+  performance_threshold: 0.05  # 性能提升阈值（5%）
+  max_models_to_keep: 10  # 保留的最大模型数
+  retraining_window: 252  # 重训练窗口（交易日）
+  
+  # 策略进化
+  strategy_evolution_frequency: "monthly"  # 策略进化频率
+  mutation_rate: 0.1  # 突变率
+  crossover_rate: 0.7  # 交叉率
+  selection_pressure: 0.3  # 选择压力
+  population_size: 20  # 种群大小
+
+# 系统通用配置
+system_config:
+  # 数据更新
+  data_update_frequency: "daily"  # 数据更新频率
+  data_sources:  # 数据源
+    - "akshare"  # 主数据源
+    - "baostock"  # 备用数据源
+    - "tushare"  # 备用数据源
+  
+  # 交易频率
+  trading_frequency: "daily"  # 交易频率：daily, hourly, minute
+  
+  # 报告生成
+  report_frequency: "daily"  # 报告频率：daily, weekly, monthly
+  report_types:
+    - "performance"  # 绩效报告
+    - "risk"  # 风险报告
+    - "trading"  # 交易报告
+    - "system"  # 系统报告
+  
+  # 系统限制
+  max_concurrent_strategies: 10  # 最大并发策略数
+  max_active_positions: 20  # 最大活跃持仓数
+  max_daily_trades: 50  # 最大日交易数
+  
+  # 系统检查
+  system_check_interval_hours: 1  # 系统检查间隔
+  auto_restart_on_failure: true  # 失败时自动重启
+  max_restart_attempts: 3  # 最大重启尝试次数
+  
+  # 日志配置
+  log_config:
+    level: "INFO"  # 日志级别：DEBUG, INFO, WARNING, ERROR
+    file_path: "logs/closed_loop_system.log"
+    max_file_size_mb: 100  # 最大文件大小（MB）
+    backup_count: 5  # 备份文件数
+  
+  # 数据存储
+  data_storage:
+    database_type: "sqlite"  # 数据库类型：sqlite, mysql, postgresql
+    database_path: "data/closed_loop.db"
+    cache_size_mb: 100  # 缓存大小（MB）
+    backup_frequency: "daily"  # 备份频率
+  
+  # 安全配置
+  security_config:
+    encrypt_sensitive_data: true  # 加密敏感数据
+    api_key_rotation_days: 90  # API密钥轮换天数
+    audit_log_enabled: true  # 启用审计日志
