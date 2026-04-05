@@ -1,6 +1,6 @@
 """
 📚 策略知识库 - 量化策略体系与因子知识
-基于安达量化、牧之林等实战经验整理
+基于安达量化、牧之林、Dirac、易涨EasyUp/OpenClaw 等实战经验整理
 """
 
 import streamlit as st
@@ -13,7 +13,7 @@ def render():
     </div>
     """, unsafe_allow_html=True)
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📋 策略体系", "🧬 因子分类", "💡 实战技巧", "📖 来源说明"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📋 策略体系", "🧬 因子分类", "💡 实战技巧", "🦞 OpenClaw生态", "📖 来源说明"])
 
     with tab1:
         col1, col2 = st.columns(2)
@@ -142,6 +142,106 @@ def render():
             st.success(f"**{title}**: {desc}")
 
     with tab4:
+        st.markdown("## 🦞 OpenClaw × 易涨EasyUp 工作流精粹")
+        st.markdown("""> **来源**: 抖音博主「易涨EasyUp🦞」(10万粉丝) + OpenClaw 开源AI Agent框架 (GitHub 69.7k Stars)
+        """)
+        
+        st.markdown("### 🔥 核心工作流架构")
+        st.code("""
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│  大模型层     │───▶│ Agent调度层  │───▶│  交易执行层  │
+│ (阿里云百炼) │    │ (OpenClaw)   │    │ (QMT-MCP)   │
+└──────────────┘    └──────┬───────┘    └──────────────┘
+                           │
+                 ┌─────────▼─────────┐
+                 │   数据层 (Skill)   │ ← 98个标准化接口
+                 │ akshare-data Skill │
+                 │ tushare-data Skill │
+                 │ eastmoney Skill    │
+                 └─────────┬─────────┘
+                           │
+        ┌──────────────────┼──────────────────┐
+        ▼                  ▼                   ▼
+   ┌──────────┐      ┌──────────┐       ┌──────────┐
+   │  AKShare  │      │ Tushare  │       │ BaoStock  │
+   │ 免费/无Token│    │ 免费积分制│       │ 免费/稳定 │
+   └──────────┘      └──────────┘       └──────────┘
+        """, language="text")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 📊 开源三件套")
+            st.markdown("""
+            | 组件 | 项目 | 功能 |
+            |------|------|------|
+            | **数据源** | AKShare/Tushare/BaoStock | 原材料 |
+            | **加工厂** | Qlib (微软开源) | 特征工程+回测 |
+            | **智能质检** | RD-Agent | AI因子挖掘 |
+            
+            **实测效果**: 回测年化59%收益率（需谨慎看待过拟合风险）
+            """)
+            
+            st.markdown("### 💡 易涨的数据哲学")
+            st.success("""
+            > **"好几个和在一起用、一个不行"** 
+            > —— 易涨EasyUp 在评论区的回复
+            
+            - ❌ 不依赖单一数据源
+            - ✅ 多源聚合 + 自动降级
+            - ✅ 免费优先 + 付费兜底
+            - ✅ 稳定性 > 实时性（对于回测场景）
+            """)
+        
+        with col2:
+            st.markdown("### 🛠️ 数据源对比（易涨推荐）")
+            data_source_data = {
+                "数据源": ["AKShare ⭐", "东方财富", "Tushare Pro", "BaoStock", "长桥SDK"],
+                "费用": ["免费", "免费", "免费积分", "免费", "需注册"],
+                "特点": ["98+接口多源聚合", "实时行情强", "数据规范", "A股日线稳定", "港股/美股"],
+                "适用场景": ["主力数据源", "实时监控", "量化研究", "历史回测", "跨市场"],
+            }
+            st.dataframe(data_source_data, use_container_width=True, hide_index=True)
+            
+            st.markdown("### 🚀 部署方案")
+            st.markdown("""
+            | 环境 | 方案 | 成本 |
+            |------|------|------|
+            | **阿里云ECS** | 预装镜像, 放行18789端口 | ~50元/月 |
+            | **Windows 11** | PowerShell + npm install -g openclaw | 免费 |
+            | **Docker** | 容器化部署 | 免费 |
+            | **HuggingFace** | Spaces Docker | 免费 |
+            """)
+
+        st.markdown("### 📚 EasyUp 核心视频作品")
+        easyup_videos = [
+            ("🎬 AGENT 数据层揭秘", "2026-03-16", "#openclaw #量化编程"),
+            ("🛠️ SKILL分享之东财篇", "2026-03-14", "2144赞 #openclaw #skills"),
+            ("💰 免费数据源解析", "2026-03-23", "4954赞 #openclaw #aiagent"),
+            ("🎉 v1.0.0 RELEASED！", "2026-03-22", "4663赞 #ai #agent #量化交易"),
+            ("🤖 AI交易搭档Day1", "2026-03", "竞价→盘中→收盘→飞书推送"),
+            ("📈 板块联动量化 AI Agent开发实录", "2026-03-30", "#openclaw #量化交易策略"),
+        ]
+        for title, date, tags in easyup_videos:
+            st.markdown(f"**{title}** ({date}) — `{tags}`")
+
+        st.markdown("### 🔗 关键资源链接")
+        resources = [
+            ("🦞 OpenClaw GitHub (69.7k⭐)", "https://github.com/openclaw/openclaw", "AI Agent框架核心项目"),
+            ("📦 ClawHub 技能市场", "https://github.com/openclaw/clawhub", "Skill目录与发现平台"),
+            ("🌐 SkillsBot 中文站", "https://www.skillsbot.cn/", "中文技能库与教程"),
+            ("📊 Qlib 微软量化", "https://github.com/microsoft/qlib", "AI-oriented量化投资平台"),
+            ("🧬 RD-Agent 因子挖掘", "https://quant-wiki.com/", "LLM自动化因子挖掘工具"),
+            ("📈 AKShare 数据接口", "https://github.com/akfamily/akshare", "Python金融数据接口库"),
+            ("🔗 QMT-MCP 交易桥接", "https://github.com/guangxiangdebizi/QMT-MCP", "OpenClaw→QMT交易执行"),
+            ("🎬 EasyUp 抖音主页", "https://v.douyin.com/2zV2myrh1Eg/", "博主主页"),
+        ]
+        for name, url, desc in resources:
+            st.markdown(f"- **{name}**: [{url}]({url}) — {desc}")
+
+        st.info("💡 **提示**: 本页面内容来自对「易涨EasyUp」公开视频和网络资料的研究整理，仅供学习参考。")
+
+    with tab5:
         st.markdown("## 📖 知识来源与致谢")
         
         st.markdown("""
@@ -149,6 +249,9 @@ def render():
         """)
         
         sources = [
+            ("🦞 易涨EasyUp（抖音）", "10万粉丝，开源量化AI Agent实践者", 
+             "https://v.douyin.com/2zV2myrh1Eg/",
+             "OpenClaw数据层架构、多源聚合策略、akshare-data Skill(98接口)、Qlib+RD-Agent三件套、免费数据源解析、板块联动量化、东方财富Skill、飞书自动化推送"),
             ("🔴 安达量化（小红书）", "32篇笔记，6大策略体系", 
              "https://www.xiaohongshu.com/user/profile/58a8f6d36e23de2b9810b9b7",
              "超跌反弹、多因子选股、动量趋势、均线系统、量价分析、波动率策略"),
@@ -164,6 +267,9 @@ def render():
             ("🔵 学术论文", "AlphaAgent (KDD 2025)", 
              "arxiv.org/abs/2507.xxxxx",
              "遗传编程自动因子挖掘、表达式树优化"),
+            ("⚪ OpenClaw 生态", "GitHub 69.7k Stars AI Agent框架", 
+             "https://github.com/openclaw/openclaw",
+             "MCP协议集成、自然语言驱动交易、多智能体协作、Skill插件生态"),
         ]
         
         for name, desc, url, content in sources:

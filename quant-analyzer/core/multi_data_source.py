@@ -1,7 +1,7 @@
 """
-多数据源提供器 — AkShare为主，BaoStock备用（本地环境）
-AkShare 基于HTTP API，在Docker/HuggingFace等云环境稳定可用
-BaoStock 基于TCP长连接，仅在有网络直连的本地环境作为备用
+多数据源提供器 — 参考 OpenClaw/易涨EasyUp 的"多源聚合+免费优先+自动降级"策略
+数据源优先级: BaoStock(稳定免费) → AkShare(多源聚合) → 模拟数据(兜底)
+灵感来源: 易涨EasyUp "好几个和在一起用、一个不行"
 """
 import logging
 import pandas as pd
@@ -452,7 +452,19 @@ class BaoStockSource:
 # ═══════════════════════════════════════════════════════════
 
 class MultiDataSource:
-    """多数据源统一接口 — AkShare优先（云环境友好），BaoStock备用（本地）"""
+    """多数据源统一接口 — 参考OpenClaw/易涨EasyUp的多源聚合策略
+    
+    数据源优先级链 (参考 akshare-data Skill 的98接口设计):
+    1. BaoStock: 免费、稳定、无需Token，适合历史K线回测
+    2. AkShare: 多源聚合(新浪/腾讯/东财)，98+接口，实时行情强
+    3. 模拟数据: 几何布朗运动兜底，确保系统永远可用
+    
+    核心哲学 (来自易涨EasyUp): "好几个和在一起用、一个不行"
+    - ❌ 不依赖单一数据源
+    - ✅ 多源聚合 + 自动降级
+    - ✅ 免费优先 + 模拟兜底
+    - ✅ 稳定性 > 实时性（对于回测场景）
+    """
 
     _name_cache: Dict[str, Dict] = {}
 
