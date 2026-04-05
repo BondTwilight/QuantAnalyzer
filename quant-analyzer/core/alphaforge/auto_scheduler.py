@@ -318,18 +318,19 @@ class EvolutionScheduler:
             Dict[str, pd.DataFrame]: {stock_code: OHLCV DataFrame}
         """
         try:
-            from core.quant_brain import DataProvider
-            
+            from core.multi_data_source import MultiDataSource
+
             end_date = datetime.now().strftime("%Y-%m-%d")
             start_date = (datetime.now() - timedelta(days=self.config.lookback_days)).strftime("%Y-%m-%d")
-            
+
+            mds = MultiDataSource()
             all_data = {}
             failed = []
-            
+
             # 每次进化使用全部股票池
             for stock_code in self.config.stock_pool:
                 try:
-                    df = DataProvider.get_stock_daily(stock_code, start_date=start_date, end_date=end_date)
+                    df = mds.get_stock_daily(stock_code, start_date=start_date, end_date=end_date)
                     if df is not None and not df.empty and len(df) >= 60:
                         all_data[stock_code] = df
                     else:
