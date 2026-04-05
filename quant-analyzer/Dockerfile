@@ -27,5 +27,5 @@ HEALTHCHECK CMD curl -f http://localhost:7860/_stcore/health || exit 1
 # 暴露端口
 EXPOSE 7860
 
-# 启动 (enhanced_app.py 是 v4.0 主入口)
-CMD ["streamlit", "run", "enhanced_app.py", "--server.port=7860", "--server.headless=true", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
+# 启动 (app.py 是 AlphaForge 进化引擎入口)
+CMD ["streamlit", "run", "app.py", "--server.port=7860", "--server.headless=true", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
