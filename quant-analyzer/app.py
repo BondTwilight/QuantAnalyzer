@@ -363,6 +363,20 @@ def main():
                      key="main_entry_btn"):
             st.switch_page("pages/evolution_center.py")
 
+    st.markdown("")
+    
+    # ── 次级入口按钮 ──
+    ec1, ec2, ec3 = st.columns(3)
+    with ec1:
+        if st.button("🔬 因子实验室", use_container_width=True, key="factor_lab_btn"):
+            st.switch_page("pages/factor_lab.py")
+    with ec2:
+        if st.button("📚 策略知识库", use_container_width=True, key="knowledge_btn"):
+            st.switch_page("pages/strategy_knowledge.py")
+    with ec3:
+        if st.button("⚙️ 参数配置", use_container_width=True, key="config_btn"):
+            st.switch_page("pages/config.py")
+
     # ── 使用流程指引 ──
     st.markdown("<hr class='divider'>", unsafe_allow_html=True)
     st.markdown("### 📖 使用流程")

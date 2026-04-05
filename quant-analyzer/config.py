@@ -80,7 +80,7 @@ DEFAULT_MODEL_PRIORITY = ["glm-turbo", "deepseek-v3", "glm-5"]
 
 # ── 页面配置 ──
 PAGE_CONFIG = {
-    "page_title": "QuantBrain - AlphaForge 进化引擎",
+    "page_title": "🧬 QuantBrain 智能量化进化平台",
     "page_icon": "🧬",
     "layout": "wide",
     "initial_sidebar_state": "expanded",
