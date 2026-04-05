@@ -18,6 +18,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import requests
 import schedule
+from abc import ABC, abstractmethod
 
 # 设置日志
 logger = logging.getLogger(__name__)

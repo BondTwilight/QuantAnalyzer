@@ -32,6 +32,18 @@ class OrderType(Enum):
     STOP = "stop"      # 止损单
     STOP_LIMIT = "stop_limit"  # 止损限价单
 
+
+class TradingInterfaceType(Enum):
+    """交易接口类型"""
+    SIMULATION = "simulation"  # 模拟交易
+    QMT = "qmt"                # QMT接口
+    EASYTRADER = "easytrader"  # Easytrader接口
+    THS = "ths"                # 同花顺接口
+    CTP = "ctp"                # CTP期货接口
+    IB = "ib"                  # Interactive Brokers接口
+    ALPACA = "alpaca"          # Alpaca接口
+
+
 class OrderStatus(Enum):
     """订单状态"""
     PENDING = "pending"

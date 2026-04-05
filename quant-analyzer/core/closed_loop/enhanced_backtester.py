@@ -52,6 +52,33 @@ class Order:
         """获取总成本（成交金额 + 手续费 + 滑点）"""
         return self.get_filled_value() + self.commission + self.slippage
 
+
+@dataclass
+class BacktestConfig:
+    """回测配置"""
+    initial_capital: float = 1000000.0  # 初始资金
+    commission_rate: float = 0.0003  # 佣金率 0.03%
+    stamp_tax: float = 0.001  # 印花税 0.1%
+    transfer_fee: float = 0.00002  # 过户费 0.002%
+    slippage_model: str = "fixed"  # 滑点模型: fixed/percentage/random
+    slippage_value: float = 0.001  # 滑点值
+    enable_market_impact: bool = False  # 是否启用市场冲击模型
+    market_impact_factor: float = 0.0001  # 市场冲击因子
+    enable_short_selling: bool = False  # 是否允许卖空
+    enable_margin_trading: bool = False  # 是否允许融资融券
+    margin_rate: float = 0.5  # 保证金率
+    start_date: Optional[datetime] = None  # 回测开始日期
+    end_date: Optional[datetime] = None  # 回测结束日期
+    benchmark_symbol: Optional[str] = None  # 基准指数
+    risk_free_rate: float = 0.03  # 无风险利率
+    max_position_size: float = 0.1  # 最大仓位比例
+    max_drawdown_limit: float = 0.2  # 最大回撤限制
+    stop_loss_enabled: bool = True  # 是否启用止损
+    take_profit_enabled: bool = True  # 是否启用止盈
+    data_frequency: str = "daily"  # 数据频率: daily/hourly/minute
+    output_dir: Optional[str] = None  # 输出目录
+
+
 @dataclass
 class Trade:
     """交易记录"""

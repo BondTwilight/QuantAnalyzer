@@ -74,6 +74,20 @@ class MarketData:
 
 
 @dataclass
+class AccountInfo:
+    """账户信息"""
+    total_assets: float  # 总资产
+    available_cash: float  # 可用现金
+    total_positions_value: float  # 持仓总价值
+    total_market_value: float  # 总市值
+    total_pnl: float  # 总盈亏
+    today_pnl: float  # 当日盈亏
+    account_id: Optional[str] = None  # 账户ID
+    broker: Optional[str] = None  # 券商
+    timestamp: Optional[datetime] = None
+
+
+@dataclass
 class RiskParams:
     """风险参数"""
     max_drawdown_limit: float = 0.2  # 最大回撤限制（20%）
@@ -102,6 +116,22 @@ class RiskCheckResult:
     def __post_init__(self):
         if self.alerts is None:
             self.alerts = []
+
+
+@dataclass
+class RiskAssessment:
+    """风险评估结果"""
+    is_approved: bool = True  # 是否通过风险评估
+    risk_score: float = 0.0  # 风险分数，0-1，越高风险越大
+    stop_loss_price: Optional[float] = None  # 建议止损价
+    take_profit_price: Optional[float] = None  # 建议止盈价
+    max_position_value: Optional[float] = None  # 最大仓位价值
+    rejection_reason: Optional[str] = None  # 拒绝原因
+    warnings: List[str] = None  # 警告信息
+    
+    def __post_init__(self):
+        if self.warnings is None:
+            self.warnings = []
 
 
 @dataclass
