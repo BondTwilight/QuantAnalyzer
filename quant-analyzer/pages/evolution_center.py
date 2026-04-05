@@ -945,6 +945,233 @@ with st.form("factor_calc_form"):
 
 
 # ═══════════════════════════════════════════════
+# 📡 数据源总览面板（Phase 3 新增）
+# ═══════════════════════════════════════════════
+st.markdown("---")
+st.markdown("### 📡 数据源总览")
+st.markdown("<div style='font-size:12px;color:#64748b;margin-bottom:12px;'>多源聚合策略（参考易涨EasyUp/OpenClaw）: AkShare(主) → BaoStock(备) → 模拟数据(兜底)</div>", unsafe_allow_html=True)
+
+try:
+    from core.multi_data_source import MultiDataSource, _is_cloud_env
+    
+    # 数据源状态卡片
+    ds_col1, ds_col2, ds_col3 = st.columns(3)
+    
+    with ds_col1:
+        # 实时行情概览
+        with st.expander("📊 A股实时行情", expanded=False):
+            if st.button("🔄 刷新行情", key="refresh_rt", use_container_width=True):
+                with st.spinner("获取实时行情..."):
+                    try:
+                        overview = MultiDataSource.get_market_overview()
+                        st.session_state.af_market_overview = overview
+                    except Exception as e:
+                        st.warning(f"获取失败: {e}")
+            
+            ov = st.session_state.get("af_market_overview", {})
+            if ov:
+                indices = ov.get("indices", [])
+                for idx in indices[:6]:
+                    pct = idx.get("pct_change", 0)
+                    color = "#f87171" if isinstance(pct, (int,float)) and pct > 0 else "#34d399"
+                    st.markdown(f"""
+                    <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1e293b;">
+                        <span style="color:#94a3b8;">{idx.get('name','')}</span>
+                        <span>
+                            <span style="color:#e2e8f0;font-weight:600;">{idx.get('price','-')}</span>
+                            <span style="color:{color};font-size:11px;margin-left:4px;">{str(pct) if pct else '-'}</span>
+                        </span>
+                    </div>""", unsafe_allow_html=True)
+                
+                stats = ov.get("market_stats", {})
+                st.caption(f"总计 {stats.get('total',0)} 只 | 📈{stats.get('up_count',0)} 📉{stats.get('down_count',0)} | 涨停≈{stats.get('limit_up',0)}")
+                
+                # 涨幅前5
+                top_g = ov.get("top_gainers", [])
+                if top_g:
+                    st.markdown("**🔥 涨幅榜 Top 5**")
+                    for g in top_g[:5]:
+                        st.markdown(f"`{g.get('代码','')}` {g.get('名称','')} **+{g.get('涨跌幅',0):.1f}%**")
+    
+    with ds_col2:
+        # ETF / 基金 / 期货
+        with st.expander("📈 ETF / 基金 / 期货", expanded=False):
+            etab = st.tabs(["ETF", "基金排行", "期货"])
+            with etab[0]:
+                if st.button("刷新ETF列表", key="etf_refresh"):
+                    try:
+                        df_etf = MultiDataSource.get_etf_list()
+                        st.session_state.af_etf_data = df_etf.head(10)
+                    except Exception as e:
+                        st.error(f"ETF获取失败: {e}")
+                
+                etf_df = st.session_state.get("af_etf_data")
+                if etf_df is not None and not etf_df.empty:
+                    st.dataframe(etf_df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("点击「刷新ETF列表」获取最新数据")
+            
+            with etab[1]:
+                cat_options_fund = ["股票型", "混合型", "债券型", "指数型"]
+                sel_cat = st.selectbox("基金类型", cat_options_fund, key="fund_cat_sel")
+                if st.button(f"刷新{sel_cat}排行", key="fund_rank_btn"):
+                    try:
+                        df_fund = MultiDataSource.get_fund_rank(sel_cat)
+                        st.session_state.af_fund_data = df_fund.head(10)
+                    except Exception as e:
+                        st.error(f"基金排行失败: {e}")
+                
+                fund_df = st.session_state.get("af_fund_data")
+                if fund_df is not None and not fund_df.empty:
+                    st.dataframe(fund_df, use_container_width=True, hide_index=True)
+            
+            with etab[2]:
+                if st.button("刷新期货列表", key="future_btn"):
+                    try:
+                        df_future = MultiDataSource.get_future_list()
+                        st.session_state.af_future_data = df_future.head(10)
+                    except Exception as e:
+                        st.error(f"期货失败: {e}")
+                
+                fut_df = st.session_state.get("af_future_data")
+                if fut_df is not None and not fut_df.empty:
+                    st.dataframe(fut_df, use_container_width=True, hide_index=True)
+
+    with ds_col3:
+        # 宏观经济 + 市场情绪
+        with st.expander("🌍 宏观经济 + 市场情绪", expanded=False):
+            macro_tab = st.tabs(["宏观指标", "市场情绪"])
+            
+            with macro_tab[0]:
+                macro_buttons = st.columns(3)
+                with macro_buttons[0]:
+                    if st.button("GDP", use_container_width=True, key="gdp_btn"):
+                        try:
+                            gdp = MultiDataSource.get_gdp_data()
+                            st.session_state.af_gdp = gdp
+                        except: pass
+                with macro_buttons[1]:
+                    if st.button("CPI/PPI", use_container_width=True, key="cpi_btn"):
+                        try:
+                            cpi = MultiDataSource.get_cpi_data()
+                            ppi = MultiDataSource.get_ppi_data()
+                            st.session_state.af_cpi = cpi
+                            st.session_state.af_ppi = ppi
+                        except: pass
+                with macro_buttons[2]:
+                    if st.button("Shibor/M2", use_container_width=True, key="shibor_btn"):
+                        try:
+                            shibor = MultiDataSource.get_shibor_rates()
+                            m2 = MultiDataSource.get_money_supply()
+                            st.session_state.af_shibor = shibor
+                            st.session_state.af_m2 = m2
+                        except: pass
+                
+                for key in ["af_gdp", "af_cpi", "af_ppi", "af_shibor", "af_m2"]:
+                    data = st.session_state.get(key)
+                    if data is not None and hasattr(data, 'head'):
+                        st.dataframe(data.head(5), use_container_width=True, hide_index=True)
+            
+            with macro_tab[1]:
+                if st.button("🔄 刷新市场情绪", key="sentiment_btn"):
+                    try:
+                        sent = MultiDataSource.get_market_sentiment()
+                        st.session_state.af_sentiment = sent
+                    except: pass
+                
+                sent_data = st.session_state.get("af_sentiment", {})
+                if sent_data:
+                    s_cols = st.columns(4)
+                    s_cols[0].metric("股票总数", f"{sent_data.get('total_stocks', 0)}")
+                    up_n = sent_data.get('up_count', 0)
+                    down_n = sent_data.get('down_count', 0)
+                    s_cols[1].metric("上涨/下跌", f"{up_n}/{down_n}", delta=f"比:{sent_data.get('advance_decline_ratio',0):.2f}")
+                    s_cols[2].metric("平均涨跌%", f"{sent_data.get('avg_pct_change', 0):.2f}%")
+                    adr = sent_data.get('advance_decline_ratio', 0)
+                    color = "normal" if adr > 1 else "inverse"
+                    s_cols[3].metric("涨跌比", f"{adr:.2f}", delta_color=color)
+                    
+                    # 板块资金流向
+                    if st.button("板块资金流", key="sector_flow_btn"):
+                        try:
+                            sf = MultiDataSource.get_sector_money_flow()
+                            st.session_state.af_sector_flow = sf
+                        except: pass
+                    
+                    sf_data = st.session_state.get("af_sector_flow")
+                    if sf_data is not None and not sf_data.empty:
+                        st.dataframe(sf_data.head(10), use_container_width=True, hide_index=True)
+
+except Exception as e:
+    st.warning(f"⚠️ 数据源模块加载异常: {e}")
+
+
+# ═══════════════════════════════════════════════
+# 🔔 通知设置面板（Phase 3 新增）
+# ═══════════════════════════════════════════════
+st.markdown("---")
+st.markdown("### 🔔 通知设置")
+
+try:
+    from core.notifications import get_notification_status, init_notifications, notify
+    
+    # 获取当前状态
+    notif_status = get_notification_status()
+    
+    nc1, nc2, nc3 = st.columns([2, 2, 1])
+    
+    with nc1:
+        st.markdown("**已注册的通知渠道**")
+        for name, info in notif_status.items():
+            avail_icon = "✅" if info["available"] else "⚪"
+            enabled_icon = "🟢" if info["enabled"] else "🔴"
+            label_map = {"log": "系统日志", "feishu": "飞书机器人", "wechat": "微信推送", "email": "邮件通知"}
+            cn_name = label_map.get(name, name)
+            st.markdown(f"{avail_icon} {enabled_icon} **{cn_name}** — {'可用' if info['available'] else '未配置'}")
+        
+        st.info("💡 配置方式：设置环境变量 `FEISHU_WEBHOOK_URL` / `WECHAT_SENDKEY` / `SMTP_HOST` 等，或使用下方表单快速测试。")
+
+    with nc2:
+        with st.form("notif_test_form"):
+            st.markdown("**🧪 发送测试通知**")
+            test_title = st.text_input("标题", value="QuantBrain 测试消息")
+            test_content = st.text_area("内容", value="这是一条来自 AlphaForge 进化中心的测试通知 ✨")
+            test_priority = st.selectbox(
+                "优先级",
+                options=["info", "success", "warning", "error", "critical"],
+                format_func=lambda x: {"info": "ℹ️ 信息", "success": "✅ 成功", "warning": "⚠️ 警告", "error": "❌ 错误", "critical": "🔥 严重"}[x],
+            )
+            submitted_notif = st.form_submit_button("📤 发送测试", type="primary", use_container_width=True)
+            
+            if submitted_notif:
+                result = notify.send(test_title, test_content, priority=test_priority)
+                success_channels = [k for k, v in result.items() if v is True]
+                failed_channels = [k for k, v in result.items() if v is False]
+                
+                if success_channels:
+                    st.success(f"✅ 已发送至: {', '.join(success_channels)}")
+                if failed_channels:
+                    st.warning(f"⏭️ 跳过: {', '.join(failed_channels)}")
+    
+    with nc3:
+        # 快速统计
+        total_logs = len(st.session_state.get("af_logs", []))
+        total_factors = len(st.session_state.get("af_best_factors", []))
+        has_result = st.session_state.get("af_last_result") is not None
+        
+        st.metric("运行日志数", f"{total_logs}")
+        st.metric("有效因子数", f"{total_factors}")
+        st.metric("进化完成", f"{'是' if has_result else '否'}")
+        
+        if st.button("🧹 清理缓存", use_container_width=True):
+            st.cache_resource.clear()
+
+except Exception as e:
+    st.info(f"ℹ️ 通知模块未启用（需配置环境变量）。当前仅使用日志记录。错误: {e}")
+
+
+
+# ═══════════════════════════════════════════════
 # 底部信息
 # ═══════════════════════════════════════════════
 st.markdown("---")

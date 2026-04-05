@@ -347,10 +347,586 @@ class AkShareSource:
             logger.warning(f"AkShare概念板块失败: {e}")
             return pd.DataFrame()
 
+    # ═══════════════════════════════════════════════════════════
+    # ETF 数据接口
+    # ═══════════════════════════════════════════════════════════
 
-# ═══════════════════════════════════════════════════════════
-# BaoStock 备用数据源（仅本地环境）
-# ═══════════════════════════════════════════════════════════
+    @staticmethod
+    def get_etf_list() -> pd.DataFrame:
+        """获取全部ETF列表"""
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.etf_spot_em()
+            if df is not None and not df.empty:
+                rename_map = {"代码": "code", "名称": "name", "最新价": "price",
+                             "涨跌幅": "pct_change", "成交量": "volume", "成交额": "amount"}
+                df = df.rename(columns=rename_map)
+                return df
+        except Exception as e:
+            logger.warning(f"AkShare ETF列表失败: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_etf_daily(etf_code: str, days: int = 365) -> pd.DataFrame:
+        """获取ETF日K线数据
+        
+        Args:
+            etf_code: ETF代码，如 '510300'(沪深300ETF), '159915'(创业板ETF)
+            days: 回溯天数
+        """
+        try:
+            import akshare as ak
+            code = etf_code.replace(".SZ", "").replace(".SH", "")
+            end_date = datetime.now().strftime("%Y%m%d")
+            start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+            
+            with _no_proxy():
+                df = ak.fund_etf_hist_em(
+                    symbol=code, period="daily",
+                    start_date=start_date, end_date=end_date, adjust="qfq"
+                )
+            if df is not None and not df.empty:
+                rename_map = {
+                    "日期": "date", "开盘": "open", "收盘": "close",
+                    "最高": "high", "最低": "low", "成交量": "volume",
+                    "成交额": "amount",
+                }
+                df = df.rename(columns=rename_map)
+                df["date"] = pd.to_datetime(df["date"])
+                for col in ["open", "high", "low", "close", "volume"]:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+                df = df.sort_values("date").reset_index(drop=True)
+                return df
+        except Exception as e:
+            logger.warning(f"AkShare ETF日K失败 {etf_code}: {e}")
+        return pd.DataFrame()
+
+    # ═══════════════════════════════════════════════════════════
+    # 基金数据接口
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def get_fund_nav(fund_code: str) -> pd.DataFrame:
+        """获取基金净值历史
+        
+        Args:
+            fund_code: 基金代码，如 '110011'(易方达中小盘)
+        """
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.fund_open_fund_info_em(fund=fund_code, indicator="单位净值走势")
+            if df is not None and not df.empty:
+                rename_map = {"净值日期": "date", "单位净值": "nav", "累计净值": "accumulated_nav"}
+                df = df.rename(columns=rename_map)
+                df["date"] = pd.to_datetime(df["date"])
+                return df.sort_values("date").reset_index(drop=True)
+        except Exception as e:
+            logger.warning(f"AkShare基金净值失败 {fund_code}: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_fund_rank(category: str = "股票型") -> pd.DataFrame:
+        """获取基金排行
+        
+        Args:
+            category: 基金类型，如 '股票型', '混合型', '债券型', '指数型'
+        """
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.fund_open_fund_rank_em(symbol=category)
+            return df
+        except Exception as e:
+            logger.warning(f"AkShare基金排行失败: {e}")
+        return pd.DataFrame()
+
+    # ═══════════════════════════════════════════════════════════
+    # 期货数据接口
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def get_future_list() -> pd.DataFrame:
+        """获取期货主力合约列表"""
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.futures_main_sina()
+            if df is not None and not df.empty:
+                rename_map = {"代码": "code", "名称": "name", "最新价": "price",
+                             "涨跌幅": "pct_change", "成交量": "volume", "持仓量": "open_interest"}
+                df = df.rename(columns=rename_map)
+                return df
+        except Exception as e:
+            logger.warning(f"AkShare期货列表失败: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_future_daily(symbol: str, days: int = 180) -> pd.DataFrame:
+        """获取期货日K数据
+        
+        Args:
+            symbol: 期货合约代码，如 'IF2406'(沪深300指数期货), 'AU2506'(黄金期货)
+            days: 回溯天数
+        """
+        try:
+            import akshare as ak
+            end_date = datetime.now().strftime("%Y%m%d")
+            start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+            
+            with _no_proxy():
+                df = ak.futures_main_sina(symbol=symbol, start_date=start_date, end_date=end_date)
+            if df is not None and not df.empty:
+                df["date"] = pd.to_datetime(df["date"])
+                for col in ["open", "high", "low", "close", "volume"]:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+                return df.sort_values("date").reset_index(drop=True)
+        except Exception as e:
+            logger.warning(f"AkShare期货日K失败 {symbol}: {e}")
+        return pd.DataFrame()
+
+    # ═══════════════════════════════════════════════════════════
+    # 宏观经济数据接口
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def get_gdp_data() -> pd.DataFrame:
+        """获取中国GDP数据（季度）"""
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.cn_gdp()
+            if df is not None and not df.empty:
+                rename_map = {"季度": "quarter", "国内生产总值-绝对值": "gdp",
+                             "第一产业增加值-绝对值": "primary_industry",
+                             "第二产业增加值-绝对值": "secondary_industry",
+                             "第三产业增加值-绝对值": "tertiary_industry"}
+                df = df.rename(columns=rename_map)
+                return df
+        except Exception as e:
+            logger.warning(f"AkShare GDP数据失败: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_cpi_data() -> pd.DataFrame:
+        """获取中国CPI数据（月度）"""
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.cn_cpi()
+            if df is not None and not df.empty:
+                return df
+        except Exception as e:
+            logger.warning(f"AkShare CPI数据失败: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_ppi_data() -> pd.DataFrame:
+        """获取中国PPI数据（月度）"""
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.cn_ppi()
+            return df
+        except Exception as e:
+            logger.warning(f"AkShare PPI数据失败: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_pm_i_data() -> pd.DataFrame:
+        """获取PMI采购经理指数"""
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.china_pmi_index_monthly()
+            return df
+        except Exception as e:
+            logger.warning(f"AkShare PMI数据失败: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_money_supply() -> pd.DataFrame:
+        """获取货币供应量（M0/M1/M2）"""
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.money_supply_cn_monthly()
+            return df
+        except Exception as e:
+            logger.warning(f"AkShare货币供应量失败: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_shibor_rates() -> pd.DataFrame:
+        """获取Shibor利率"""
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.shibor_data_df(symbol="SHIBOR")
+            return df
+        except Exception as e:
+            logger.warning(f"AkShare Shibor失败: {e}")
+        return pd.DataFrame()
+
+    # ═══════════════════════════════════════════════════════════
+    # 港股/美股数据接口
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def get_hk_stock_daily(stock_code: str, days: int = 365) -> pd.DataFrame:
+        """获取港股日K数据
+        
+        Args:
+            stock_code: 港股代码，如 '00700'(腾讯), '09988'(阿里), '03690'(美团)
+        """
+        try:
+            import akshare as ak
+            code = stock_code.replace("HK.", "").replace("hk.", "")
+            end_date = datetime.now().strftime("%Y%m%d")
+            start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+            
+            with _no_proxy():
+                df = ak.stock_hk_hist(
+                    symbol=code, period="daily",
+                    start_date=start_date, end_date=end_date, adjust="qfq"
+                )
+            if df is not None and not df.empty:
+                rename_map = {
+                    "日期": "date", "开盘": "open", "收盘": "close",
+                    "最高": "high", "最低": "low", "成交量": "volume",
+                    "成交额": "amount", "振幅": "amplitude", "换手率": "turnover",
+                }
+                df = df.rename(columns=rename_map)
+                df["date"] = pd.to_datetime(df["date"])
+                for col in ["open", "high", "low", "close", "volume"]:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+                return df.sort_values("date").reset_index(drop=True)
+        except Exception as e:
+            logger.warning(f"AkShare港股日K失败 {stock_code}: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_us_stock_daily(stock_code: str, days: int = 365) -> pd.DataFrame:
+        """获取美股日K数据
+        
+        Args:
+            stock_code: 美股代码，如 'AAPL', 'TSLA', 'NVDA'
+        """
+        try:
+            import akshare as ak
+            end_date = datetime.now().strftime("%Y%m%d")
+            start_date = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+            
+            with _no_proxy():
+                df = ak.us_stock_daily_hist(
+                    symbol=stock_code, period="daily",
+                    start_date=start_date, end_date=end_date, adjust="qfq"
+                )
+            if df is not None and not df.empty:
+                rename_map = {
+                    "日期": "date", "开盘": "open", "收盘": "close",
+                    "最高": "high", "最低": "low", "成交量": "volume",
+                    "成交额": "amount",
+                }
+                df = df.rename(columns=rename_map)
+                df["date"] = pd.to_datetime(df["date"])
+                for col in ["open", "high", "low", "close", "volume"]:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors="coerce")
+                return df.sort_values("date").reset_index(drop=True)
+        except Exception as e:
+            logger.warning(f"AkShare美股日K失败 {stock_code}: {e}")
+        return pd.DataFrame()
+
+    # ═══════════════════════════════════════════════════════════
+    # 债券/可转债接口
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def get_bond_cb_list() -> pd.DataFrame:
+        """获取可转债列表"""
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.bond_cb_em()
+            return df
+        except Exception as e:
+            logger.warning(f"AkShare可转债列表失败: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_treasury_yield(days: int = 365) -> pd.DataFrame:
+        """获取国债收益率曲线
+        
+        Args:
+            days: 回溯天数
+        """
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.bond_china_yield(start_date=(datetime.now()-timedelta(days=days)).strftime("%Y%m%d"))
+            return df
+        except Exception as e:
+            logger.warning(f"AkShare国债收益率失败: {e}")
+        return pd.DataFrame()
+
+    # ═══════════════════════════════════════════════════════════
+    # 资金流向 / 市场情绪
+    # ═══════════════════════════════════════════════════════════
+
+    @staticmethod
+    def get_stock_money_flow(stock_code: str) -> pd.DataFrame:
+        """获取个股资金流向（东方财富）
+        
+        Args:
+            stock_code: 股票代码
+        """
+        try:
+            import akshare as ak
+            code = stock_code.replace(".SZ", "").replace(".SH", "")
+            with _no_proxy():
+                df = ak.stock_individual_fund_flow(stock=code, market="sh" if code.startswith(("6","9")) else "sz")
+            return df
+        except Exception as e:
+            logger.warning(f"AkShare个股资金流向失败: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_sector_money_flow() -> pd.DataFrame:
+        """获取行业板块资金流向"""
+        try:
+            import akshare as ak
+            with _no_proxy():
+                df = ak.stock_sector_fund_flow_rank(indicator="今日")
+            return df
+        except Exception as e:
+            logger.warning(f"AkShare板块资金流失败: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_market_sentiment() -> Dict:
+        """获取市场情绪指标汇总"""
+        result = {}
+        try:
+            # 涨跌家数比
+            import akshare as ak
+            with _no_proxy():
+                df = ak.stock_zh_a_spot_em()
+            if df is not None and not df.empty:
+                up_count = len(df[df["涨跌幅"] > 0])
+                down_count = len(df[df["涨跌幅"] < 0])
+                flat_count = len(df[df["涨跌幅"] == 0])
+                total = len(df)
+                result.update({
+                    "total_stocks": total,
+                    "up_count": up_count,
+                    "down_count": down_count,
+                    "flat_count": flat_count,
+                    "advance_decline_ratio": round(up_count / (down_count + 1), 2),
+                    "avg_pct_change": round(float(df["涨跌幅"].mean()), 2),
+                })
+        except Exception as e:
+            logger.warning(f"市场情绪计算失败: {e}")
+        return result
+
+
+# ════════════════════════════════════════════════════════════════
+# 东方财富实时行情专用源（易涨EasyUp推荐的核心数据源）
+# ════════════════════════════════════════════════════════════════
+
+class EastMoneyRealtimeSource:
+    """东方财富实时行情专用数据源
+    
+    易涨EasyUp核心推荐的数据层组件，特点：
+    - 覆盖A股/港股/美股/期货/基金全品类
+    - 实时推送 + 历史K线一体化
+    - 免费无需注册（公开API）
+    - 通过AkShare的em系列接口访问
+    
+    参考: SKILL分享之东财篇 (2144赞)
+    """
+
+    @staticmethod
+    def get_realtime_batch(codes: List[str]) -> pd.DataFrame:
+        """批量获取实时行情（支持跨市场混合查询）
+        
+        Args:
+            codes: 代码列表，支持混合格式：
+                   A股: ['000001', '600519']
+                   港股: ['00700', '09988']  
+                   美股: ['AAPL', 'TSLA']
+                   指数: ['000001', '399001', '899050']
+        
+        Returns:
+            包含 code/name/price/pct_change/volume/amount 的DataFrame
+        """
+        all_dfs = []
+        for code in codes:
+            try:
+                import akshare as ak
+                clean_code = code.replace(".SZ", "").replace(".SH", "")
+                
+                # 判断市场类型
+                if clean_code.isdigit() and len(clean_code) == 6:
+                    # A股或指数 - 使用 spot 接口
+                    with _no_proxy():
+                        df = ak.stock_zh_a_spot_em()
+                    if df is not None and not df.empty:
+                        match = df[df["代码"] == clean_code]
+                        if not match.empty:
+                            row = match.iloc[0]
+                            all_dfs.append({
+                                "code": clean_code,
+                                "name": row.get("名称", ""),
+                                "price": row.get("最新价"),
+                                "pct_change": row.get("涨跌幅"),
+                                "change": row.get("涨跌额"),
+                                "volume": row.get("成交量"),
+                                "amount": row.get("成交额"),
+                                "high": row.get("最高"),
+                                "low": row.get("最低"),
+                                "open": row.get("今开"),
+                                "prev_close": row.get("昨收"),
+                                "turnover": row.get("换手率"),
+                                "pe": row.get("市盈率-动态"),
+                                "pb": row.get("市净率"),
+                            })
+
+                elif clean_code.isdigit() and len(clean_code) <= 5:
+                    # 港股
+                    with _no_proxy():
+                        hk_df = ak.stock_hk_spot_em()
+                    if hk_df is not None and not hk_df.empty:
+                        match = hk_df[hk_df["代码"] == clean_code]
+                        if not match.empty:
+                            row = match.iloc[0]
+                            all_dfs.append({
+                                "code": f"HK.{clean_code}",
+                                "name": row.get("名称", ""),
+                                "price": row.get("最新价"),
+                                "pct_change": row.get("涨跌幅"),
+                                "volume": row.get("成交量"),
+                                "amount": row.get("成交额"),
+                            })
+
+                else:
+                    # 美股
+                    with _no_proxy():
+                        us_df = ak.us_spot_em()
+                    if us_df is not None and not us_df.empty:
+                        match = us_df[us_df["代码"].str.upper() == clean_code.upper()]
+                        if not match.empty:
+                            row = match.iloc[0]
+                            all_dfs.append({
+                                "code": clean_code.upper(),
+                                "name": row.get("名称", ""),
+                                "price": row.get("最新价"),
+                                "pct_change": row.get("涨跌幅"),
+                                "volume": row.get("成交量"),
+                            })
+
+            except Exception as e:
+                logger.debug(f"EastMoney realtime {code} failed: {e}")
+
+        if all_dfs:
+            df = pd.DataFrame(all_dfs)
+            for col in ["price", "pct_change", "change", "volume", "amount", "pe", "pb"]:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+            return df
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_minute_data(stock_code: str, period: str = "1") -> pd.DataFrame:
+        """获取分钟级K线数据
+        
+        Args:
+            stock_code: 股票代码
+            period: K线周期 '1'=1分钟, '5'=5分钟, '15'=15分钟, '30'=30分钟, '60'=60分钟
+        """
+        try:
+            import akshare as ak
+            code = stock_code.replace(".SZ", "").replace(".SH", "")
+            
+            # 确定市场
+            market = "sz" if code.startswith(("0", "3")) else "sh"
+            symbol = f"{market}{code}"
+            
+            period_map = {"1": "1", "5": "5", "15": "15", "30": "30", "60": "60"}
+            adj_period = period_map.get(period, "5")
+
+            with _no_proxy():
+                df = ak.stock_zh_a_hist_min_em(
+                    symbol=code, period=adj_period, adjust="qfq"
+                )
+            if df is not None and not df.empty:
+                rename_map = {
+                    "时间": "datetime", "开盘": "open", "收盘": "close",
+                    "最高": "high", "最低": "low", "成交量": "volume", "成交额": "amount",
+                    "振幅": "amplitude", "涨跌幅": "pct_change",
+                }
+                df = df.rename(columns=rename_map)
+                return df
+        except Exception as e:
+            logger.warning(f"EastMoney分钟线失败 {stock_code}: {e}")
+        return pd.DataFrame()
+
+    @staticmethod
+    def get_market_overview() -> Dict:
+        """获取市场全景概览（主要指数+市场情绪+热门板块）"""
+        overview = {}
+        try:
+            import akshare as ak
+            
+            # 主要指数实时行情
+            index_codes = ["000001", "399001", "399006", "000300", "000016", "000688"]
+            index_names = ["上证指数", "深证成指", "创业板指", "沪深300", "上证50", "科创50"]
+
+            with _no_proxy():
+                df = ak.stock_zh_a_spot_em()
+            
+            if df is not None and not df.empty:
+                indices = []
+                for code, name in zip(index_codes, index_names):
+                    idx_match = df[df["代码"] == code]
+                    if not idx_match.empty:
+                        r = idx_match.iloc[0]
+                        indices.append({
+                            "code": code, "name": name,
+                            "price": r.get("最新价"), 
+                            "pct_change": r.get("涨跌幅"),
+                        })
+                overview["indices"] = indices
+
+                # 市场统计
+                overview["market_stats"] = {
+                    "total": len(df),
+                    "up_count": int(len(df[df["涨跌幅"] > 0])),
+                    "down_count": int(len(df[df["涨跌幅"] < 0])),
+                    "limit_up": int(len(df[abs(df["涨跌幅"] - 19.9] < 1])),  # 近似涨停
+                    "limit_down": int(len(df[df["涨跌幅"] < -9.9])),
+                    "total_amount": df["成交额"].sum() if "成交额" in df.columns else 0,
+                }
+
+                # 涨幅前10
+                top_gainers = df.nlargest(10, "涨跌幅")[["代码", "名称", "最新价", "涨跌幅", "成交额"]]
+                overview["top_gainers"] = top_gainers.to_dict("records")
+
+                # 跌幅前10
+                top_losers = df.nsmallest(10, "涨跌幅")[["代码", "名称", "最新价", "涨跌幅", "成交额"]]
+                overview["top_losers"] = top_losers.to_dict("records")
+
+                # 成交额前10
+                top_volume = df.nlargest(10, "成交额")[["代码", "名称", "最新价", "涨跌幅", "成交额"]]
+                overview["top_volume"] = top_volume.to_dict("records")
+
+        except Exception as e:
+            logger.error(f"市场全景概览失败: {e}")
+        return overview
 
 class BaoStockSource:
     """BaoStock 数据源 — TCP连接，仅本地环境备用"""
@@ -614,6 +1190,124 @@ class MultiDataSource:
     @staticmethod
     def get_concept_list() -> pd.DataFrame:
         return AkShareSource.get_concept_list()
+
+    # ─── ETF ───
+    @staticmethod
+    def get_etf_list() -> pd.DataFrame:
+        """获取全部ETF列表"""
+        return AkShareSource.get_etf_list()
+
+    @staticmethod
+    def get_etf_daily(etf_code: str, days: int = 365) -> pd.DataFrame:
+        """获取ETF日K线数据"""
+        return AkShareSource.get_etf_daily(etf_code, days)
+
+    # ─── 基金 ───
+    @staticmethod
+    def get_fund_nav(fund_code: str) -> pd.DataFrame:
+        """获取基金净值历史"""
+        return AkShareSource.get_fund_nav(fund_code)
+
+    @staticmethod
+    def get_fund_rank(category: str = "股票型") -> pd.DataFrame:
+        """获取基金排行"""
+        return AkShareSource.get_fund_rank(category)
+
+    # ─── 期货 ───
+    @staticmethod
+    def get_future_list() -> pd.DataFrame:
+        """获取期货主力合约列表"""
+        return AkShareSource.get_future_list()
+
+    @staticmethod
+    def get_future_daily(symbol: str, days: int = 180) -> pd.DataFrame:
+        """获取期货日K数据"""
+        return AkShareSource.get_future_daily(symbol, days)
+
+    # ─── 宏观经济 ───
+    @staticmethod
+    def get_gdp_data() -> pd.DataFrame:
+        """获取中国GDP数据"""
+        return AkShareSource.get_gdp_data()
+
+    @staticmethod
+    def get_cpi_data() -> pd.DataFrame:
+        """获取中国CPI数据"""
+        return AkShareSource.get_cpi_data()
+
+    @staticmethod
+    def get_ppi_data() -> pd.DataFrame:
+        """获取中国PPI数据"""
+        return AkShareSource.get_ppi_data()
+
+    @staticmethod
+    def get_pm_i_data() -> pd.DataFrame:
+        """获取PMI采购经理指数"""
+        return AkShareSource.get_pm_i_data()
+
+    @staticmethod
+    def get_money_supply() -> pd.DataFrame:
+        """获取货币供应量(M0/M1/M2)"""
+        return AkShareSource.get_money_supply()
+
+    @staticmethod
+    def get_shibor_rates() -> pd.DataFrame:
+        """获取Shibor利率"""
+        return AkShareSource.get_shibor_rates()
+
+    # ─── 港股/美股 ───
+    @staticmethod
+    def get_hk_stock_daily(stock_code: str, days: int = 365) -> pd.DataFrame:
+        """获取港股日K数据"""
+        return AkShareSource.get_hk_stock_daily(stock_code, days)
+
+    @staticmethod
+    def get_us_stock_daily(stock_code: str, days: int = 365) -> pd.DataFrame:
+        """获取美股日K数据"""
+        return AkShareSource.get_us_stock_daily(stock_code, days)
+
+    # ─── 债券 ───
+    @staticmethod
+    def get_bond_cb_list() -> pd.DataFrame:
+        """获取可转债列表"""
+        return AkShareSource.get_bond_cb_list()
+
+    @staticmethod
+    def get_treasury_yield(days: int = 365) -> pd.DataFrame:
+        """获取国债收益率曲线"""
+        return AkShareSource.get_treasury_yield(days)
+
+    # ─── 资金流向 / 市场情绪 ───
+    @staticmethod
+    def get_stock_money_flow(stock_code: str) -> pd.DataFrame:
+        """获取个股资金流向"""
+        return AkShareSource.get_stock_money_flow(stock_code)
+
+    @staticmethod
+    def get_sector_money_flow() -> pd.DataFrame:
+        """获取行业板块资金流向"""
+        return AkShareSource.get_sector_money_flow()
+
+    @staticmethod
+    def get_market_sentiment() -> Dict:
+        """获取市场情绪指标汇总"""
+        return AkShareSource.get_market_sentiment()
+
+    # ─── 东方财富实时行情（批量） ───
+    @staticmethod
+    def get_realtime_batch(codes: List[str]) -> pd.DataFrame:
+        """批量获取实时行情（支持A股/港股/美股混合）"""
+        return EastMoneyRealtimeSource.get_realtime_batch(codes)
+
+    @staticmethod
+    def get_minute_data(stock_code: str, period: str = "5") -> pd.DataFrame:
+        """获取分钟级K线数据"""
+        return EastMoneyRealtimeSource.get_minute_data(stock_code, period)
+
+    @staticmethod
+    def get_market_overview() -> Dict:
+        """获取市场全景概览（指数+涨跌榜+成交额榜）"""
+        return EastMoneyRealtimeSource.get_market_overview()
 
     # ═══════════════════════════════════════════════
     # 技术指标计算

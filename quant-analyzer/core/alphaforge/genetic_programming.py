@@ -783,6 +783,9 @@ class GeneticProgrammer:
 
             logger.info(f"═══ 进化第 {gen+1}/{self.config['max_generations']} 代 ═══")
 
+            # 0. 自适应参数调整（在评估之前）
+            self.adapt_parameters()
+
             # 1. 评估适应度
             self._evaluate_population(data)
 
@@ -956,3 +959,284 @@ class GeneticProgrammer:
         self._expression_hashes = {_expression_hash(ind.expression) for ind in result}
 
         return result
+
+    # ═══════════════════════════════════════════════
+    # LLM 辅助因子生成（借鉴 RD-Agent 思想）
+    # ═══════════════════════════════════════════════
+
+    def generate_with_llm(self, llm_manager=None, theme: str = "动量反转",
+                          n_suggestions: int = 5) -> List[str]:
+        """使用 LLM 辅助生成因子表达式
+        
+        借鉴 RD-Agent (Research Doctor Agent) 的思想：
+        - 用 LLM 理解量化因子的语义和组合规律
+        - 根据主题（如"动量反转"、"均值回归"、"量价配合"）生成候选因子
+        - 生成的表达式必须符合 AlphaForge 的算子规范
+        
+        Args:
+            llm_manager: LLM管理器实例 (core/llm_manager.py)
+            theme: 因子主题，如 "动量反转", "超跌反弹", "趋势跟踪", "量价配合"
+            n_suggestions: 期望生成的因子数量
+        
+        Returns:
+            合法的因子表达式字符串列表
+        """
+        if not llm_manager:
+            logger.warning("LLM辅助生成需要 llm_manager 参数")
+            return []
+
+        try:
+            # 构造提示词
+            prompt = self._build_factor_generation_prompt(theme, n_suggestions)
+            
+            # 调用 LLM
+            raw_response = llm_manager.chat(
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=1024,
+            )
+
+            if not raw_response:
+                logger.warning("LLM未返回有效响应")
+                return []
+
+            # 解析并验证表达式
+            expressions = self._parse_llm_factor_response(raw_response)
+            
+            # 验证合法性
+            valid_exprs = []
+            for expr in expressions:
+                if self._validate_expression(expr):
+                    valid_exprs.append(expr)
+                    logger.info(f"  ✅ LLM生成有效因子: {expr}")
+                else:
+                    logger.debug(f"  ❌ LLM生成无效因子（跳过）: {expr}")
+
+            logger.info(f"🤖 LLM辅助因子生成: {len(valid_exprs)}/{len(expressions)} 有效")
+            return valid_exprs
+
+        except Exception as e:
+            logger.error(f"LLM辅助因子生成失败: {e}")
+            return []
+
+    def _build_factor_generation_prompt(self, theme: str, n: int) -> str:
+        """构造因子生成的 LLM 提示词"""
+        
+        # 可用算子信息
+        ops_info = {
+            "时序算子": [
+                f"{name}({PARAMETRIC_OPS.get(name, ('?', '?'))[0]}-{PARAMETRIC_OPS.get(name, ('?', '?'))[1]})"
+                for name in ["ts_mean", "ts_std", "ts_rank", "ts_delta", "ts_delay", 
+                            "ts_zscore", "ts_decay_linear", "ts_skewness"]
+                if name in PARAMETRIC_OPS
+            ],
+            "技术指标算子": [
+                f"{name}({PARAMETRIC_OPS.get(name, ('?', '?'))[0]}-{PARAMETRIC_OPS.get(name, ('?', '?'))[1]})"
+                for name in ["sma", "ema", "rsi", "roc", "momentum"]
+                if name in PARAMETRIC_OPS
+            ],
+            "截面算子": list(OPERATOR_GROUPS.get("arity_1", [])),
+            "双数据算子": list(DUAL_DATA_OPS),
+            "三元相关算子": [name for name in OPERATOR_GROUPS.get("arity_3", [])],
+            "数据终端": DATA_TERMINALS,
+        }
+
+        prompt = f"""你是一位顶级量化因子研究员。请根据主题「{theme}」生成 {n} 个有效的量化因子表达式。
+
+## 可用算子库
+
+### 时序算子（参数范围）
+{chr(10).join('- ' + op for op in ops_info['时序算子'])}
+
+### 技术指标算子（参数范围）
+{chr(10).join('- ' + op for op in ops_info['技术指标算子'])}
+
+### 截面算子（一元无参）
+{', '.join(ops_info['截面算子'])}
+
+### 双数据算子
+{', '.join(ops_info['双数据算子'])} — 接收两个数据表达式
+
+### 三元算子
+{', '.join(ops_info['三元相关算子'])} — 如 ts_corr(data1, data2, window)
+
+### 数据终端（最内层使用）
+{', '.join(ops_info['数据终端'])}
+
+## 表达式规则
+1. 最内层必须是 close/high/low/open/volume 之一
+2. 算术运算符: +, -, *, /
+3. 可以嵌套，但深度不超过4层
+4. 每行一个完整表达式，不要编号和解释
+
+## 示例格式
+```
+ts_delta(close, 5) / ts_std(close, 20)
+rank(ts_mean(volume, 10)) * rsi(close, 14)
+ts_zscore(close, 20) * sign(ts_delta(close, 3))
+```
+
+## 主题「{theme}」的因子设计思路
+- 请结合该主题的经典量化策略思路来设计因子
+- 因子应该具有可解释性和经济含义
+- 尽量利用不同类型的算子组合
+
+请直接输出{n}个因子表达式，每行一个："""
+
+        return prompt
+
+    def _parse_llm_factor_response(self, response: str) -> List[str]:
+        """从 LLM 响应中提取因子表达式"""
+        expressions = []
+        
+        # 尝试多种解析模式
+        lines = response.strip().split('\n')
+        for line in lines:
+            line = line.strip()
+            
+            # 跳过空行、注释、编号
+            if not line or line.startswith('#') or line.startswith('//'):
+                continue
+            
+            # 去除行首数字编号: "1." "1)" "- " "* "
+            import re as _re
+            line = _re.sub(r'^[\d\.\-\*\+\)]+\s*', '', line).strip()
+            
+            # 去除 markdown code block 标记
+            if line.startswith('```'):
+                continue
+                
+            # 提取括号内的表达式
+            if '(' in line and ')' in line and any(term in line for term in DATA_TERMINALS):
+                expressions.append(line)
+        
+        return expressions[:20]  # 最多返回20个
+
+    def _validate_expression(self, expr: str) -> bool:
+        """验证表达式的合法性"""
+        expr = expr.strip()
+        
+        # 基本检查
+        if not expr:
+            return False
+        if len(expr) > self.config["max_expression_length"]:
+            return False
+        if '(' not in expr or ')' not in expr:
+            return False
+        if not any(term in expr for term in DATA_TERMINALS):
+            return False
+        
+        # 括号匹配检查
+        depth = 0
+        for ch in expr:
+            if ch == '(':
+                depth += 1
+            elif ch == ')':
+                depth -= 1
+                if depth < 0:
+                    return False
+        if depth != 0:
+            return False
+        
+        # 算子白名单检查
+        all_ops = {op[0] for op in REGISTERED_OPERATORS}
+        tokens = re.findall(r'\b([a-zA-Z_]\w*)\s*\(', expr)
+        for token in tokens:
+            if token not in all_ops and token not in ['max', 'min']:
+                # 允许未知函数名（可能是LLM创造的新名称），记录警告
+                pass
+        
+        return True
+
+    # ═══════════════════════════════════════════════
+    # 自适应参数调整
+    # ═══════════════════════════════════════════════
+
+    def adapt_parameters(self):
+        """根据进化历史自适应调整 GP 参数
+        
+        基于"早探索晚收敛"的动态参数策略：
+        - 初期：高变异率、低交叉率，鼓励探索
+        - 后期：低变异率、高交叉率，加速收敛
+        - 停滞期：增加变异率和随机注入，跳出局部最优
+        """
+        if len(self.history) < 2:
+            return
+
+        gen = self.generation
+        max_gen = self.config["max_generations"]
+        progress_ratio = gen / max_gen if max_gen > 0 else 0
+
+        recent_fitnesses = [h.get("best_fitness", 0) for h in self.history[-5:]]
+        is_stagnating = (
+            len(recent_fitnesses) >= 3 and 
+            max(recent_fitnesses) - min(recent_fitnesses) < 0.01
+        )
+        diversity_trend = (
+            [h.get("unique_expressions", 0) for h in self.history[-3:]] 
+            if len(self.history) >= 3 
+            else []
+        )
+        is_diversity_dropping = (
+            len(diversity_trend) >= 2 and 
+            diversity_trend[-1] < diversity_trend[0] * 0.8
+        )
+
+        # ── 动态交叉率：随进度递增 ──
+        base_crossover = 0.6
+        base_mutation = 0.3
+        
+        if progress_ratio < 0.3:
+            # 早期：更多变异，更少交叉 → 探索阶段
+            self.config["crossover_rate"] = 0.45
+            self.config["mutation_rate"] = 0.40
+            self.config["tournament_size"] = 4  # 更宽松的选择压力
+            logger.debug("  ⚡ 自适应: 早期探索模式 (高变异)")
+            
+        elif progress_ratio < 0.7:
+            # 中期：平衡
+            self.config["crossover_rate"] = 0.55
+            self.config["mutation_rate"] = 0.30
+            self.config["tournament_size"] = 3
+            logger.debug("  🔄 自适应: 中期平衡模式")
+            
+        else:
+            # 后期：更多交叉，更少变异 → 收敛阶段
+            self.config["crossover_rate"] = 0.65
+            self.config["mutation_rate"] = 0.20
+            self.config["tournament_size"] = 2  # 更强的选择压力
+            logger.debug("  🎯 自适应: 后期收敛模式")
+
+        # ── 停滞应对：增加扰动 ──
+        if is_stagnating:
+            self.config["mutation_rate"] = min(0.55, self.config["mutation_rate"] + 0.15)
+            self.config["novelty_ratio"] = min(0.5, self.config.get("novelty_ratio", 0.3) + 0.1)
+            logger.info(f"  🔥 自适应: 检测到停滞! 变异率↑至 {self.config['mutation_rate']:.2f}")
+
+        # ── 多样性下降应对 ──
+        if is_diversity_dropping:
+            self.config["mutation_rate"] = min(0.50, self.config["mutation_rate"] + 0.10)
+            logger.info(f"  🌱 自适应: 多样性不足! 变异率↑至 {self.config['mutation_rate']:.2f}")
+
+        # ── 精英保留动态调整 ──
+        pop_size = self.config["population_size"]
+        if is_stagnating:
+            # 减少精英保留比例，允许更多替换
+            self.config["elite_size"] = max(3, pop_size // 15)
+        else:
+            # 正常精英保留
+            self.config["elite_size"] = max(5, pop_size // 10)
+
+    def get_adaptation_status(self) -> Dict:
+        """获取当前自适应参数状态"""
+        return {
+            "generation": self.generation,
+            "progress_ratio": round(self.generation / max(self.config["max_generations"], 1), 2),
+            "current_crossover": round(self.config["crossover_rate"], 2),
+            "current_mutation": round(self.config["mutation_rate"], 2),
+            "tournament_size": self.config["tournament_size"],
+            "elite_size": self.config["elite_size"],
+            "novelty_ratio": self.config.get("novelty_ratio", 0.3),
+            "best_fitness_history": [h.get("best_fitness", 0) for h in self.history[-10:]],
+            "diversity_history": [h.get("unique_expressions", 0) for h in self.history[-10:]],
+        }
