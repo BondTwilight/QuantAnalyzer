@@ -83,5 +83,39 @@
     "ensemble_score": 22.0,
     "duration_seconds": 20.641093730926514,
     "error": ""
+  },
+  {
+    "task_id": "evo_20260405_162228",
+    "task_type": "quick",
+    "status": "completed",
+    "started_at": "2026-04-05 16:22:28",
+    "completed_at": "2026-04-05 16:22:31",
+    "current_phase": "completed",
+    "progress_pct": 100,
+    "message": "进化完成!",
+    "factors_tested": 5,
+    "factors_valid": 5,
+    "best_fitness": 0.8684000000000001,
+    "best_expression": "(log(low) - close)",
+    "ensemble_score": 30.6,
+    "duration_seconds": 3.179129123687744,
+    "error": ""
+  },
+  {
+    "task_id": "evo_20260405_162306",
+    "task_type": "quick",
+    "status": "completed",
+    "started_at": "2026-04-05 16:23:06",
+    "completed_at": "2026-04-05 16:23:12",
+    "current_phase": "completed",
+    "progress_pct": 100,
+    "message": "进化完成!",
+    "factors_tested": 10,
+    "factors_valid": 10,
+    "best_fitness": 0.8071830250154122,
+    "best_expression": "roc(rank(high), 28)",
+    "ensemble_score": 27.1,
+    "duration_seconds": 5.561540126800537,
+    "error": ""
   }
 ]

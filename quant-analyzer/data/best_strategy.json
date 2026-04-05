@@ -1,57 +1,57 @@
 {
-  "updated_at": "2026-04-05 00:27:21",
-  "score": 25.0,
+  "updated_at": "2026-04-05 16:22:31",
+  "score": 30.6,
   "ensemble": {
     "weights": {
-      "factor_5267": NaN,
-      "factor_1771": 0.8054600000000001,
-      "factor_9375": 0.8054600000000001
+      "factor_4592": 0.33383387886129895,
+      "factor_7038": 0.34035644517927344,
+      "factor_4525": 0.3258096759594276
     },
-    "score": 25.0,
+    "score": 30.6,
     "sharpe": 0.0,
-    "total_return": -0.2359
+    "total_return": 1.3097
   },
   "factors": [
     {
-      "expression": "ts_min(high, 19)",
-      "fitness": 0.718,
-      "ic_mean": 0.1032,
-      "ir": NaN,
+      "expression": "(log(low) - close)",
+      "fitness": 0.8684000000000001,
+      "ic_mean": 0.0608,
+      "ir": 2.852089681787276,
       "sharpe": 0,
       "generation": 1
     },
     {
-      "expression": "max(close, ts_min(high, 19))",
-      "fitness": 0.6883,
-      "ic_mean": 0.1235,
-      "ir": -1.8319,
+      "expression": "(log(volume, ) - close)",
+      "fitness": 0.8672,
+      "ic_mean": 0.0604,
+      "ir": 2.9280991894827983,
       "sharpe": 0,
-      "generation": 2
+      "generation": 1
     },
     {
-      "expression": "max(close, max(close, ts_min(high, 19)))",
-      "fitness": 0.6883,
-      "ic_mean": 0.1235,
-      "ir": -1.8319,
-      "sharpe": 0,
-      "generation": 3
-    },
-    {
-      "expression": "max(close, ts_rank(ts_min(high, 19), 55))",
-      "fitness": 0.6875,
-      "ic_mean": 0.1222,
-      "ir": -1.8927,
+      "expression": "close",
+      "fitness": 0.7774000000000001,
+      "ic_mean": 0.0608,
+      "ir": 2.8517135171303467,
       "sharpe": 0,
       "generation": 0
     },
     {
-      "expression": "max(close, ts_rank(rank(high), 55))",
-      "fitness": 0.6875,
-      "ic_mean": 0.1222,
-      "ir": -1.8927,
+      "expression": "low",
+      "fitness": 0.7769999999999999,
+      "ic_mean": 0.0607,
+      "ir": 2.8737267434762437,
       "sharpe": 0,
-      "generation": 1
+      "generation": 0
+    },
+    {
+      "expression": "log(low)",
+      "fitness": 0.7768999999999999,
+      "ic_mean": 0.0607,
+      "ir": 2.8737267434762437,
+      "sharpe": 0,
+      "generation": 0
     }
   ],
-  "task_id": "evo_20260405_002658"
+  "task_id": "evo_20260405_162228"
 }

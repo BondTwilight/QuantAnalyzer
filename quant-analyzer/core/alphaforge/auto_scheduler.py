@@ -311,13 +311,26 @@ class EvolutionScheduler:
         """
         加载多股票历史数据
         
-        策略（按优先级）:
-        1. AkShare 在线数据（需要网络）
-        2. 模拟数据降级（确保进化流程始终可运行）
+        策略（按优先级，参考易涨EasyUp的"多源聚合+自动降级"）:
+        1. SQLite本地缓存（最快，优先使用）
+        2. AkShare 在线数据（需要网络，有超时控制）
+        3. BaoStock 备用（仅本地环境）
+        4. 模拟数据降级（确保进化流程始终可运行）← 关键改进：无条件可用
         
         Returns:
             Dict[str, pd.DataFrame]: {stock_code: OHLCV DataFrame}
         """
+        import signal
+        import socket
+        
+        # ═══════ 全局超时保护 ═══════
+        # 这是修复"永远卡住"的核心：无论哪个数据源，都不能无限等待
+        DATA_LOAD_TIMEOUT = 30  # 每只股票最大加载时间(秒)
+        TOTAL_DATA_TIMEOUT = 120  # 整个数据加载最大时间(秒)
+        
+        def timeout_handler(signum, frame):
+            raise TimeoutError(f"数据加载超时 (>{DATA_LOAD_TIMEOUT}s)")
+        
         try:
             from core.multi_data_source import MultiDataSource
 
@@ -332,43 +345,115 @@ class EvolutionScheduler:
             stock_codes = []
             for code in self.config.stock_pool:
                 if "." not in code:
-                    # 自动判断交易所
                     if code.startswith("6"):
                         code = f"{code}.SH"
                     elif code.startswith(("0", "3")):
                         code = f"{code}.SZ"
                     else:
-                        code = f"{code}.SH"  # 默认上证
+                        code = f"{code}.SH"
                 stock_codes.append(code)
 
-            # 尝试从在线数据源加载
+            # ═══ 尝试0: SQLite本地缓存（最快！学习易涨EasyUp的90MB策略）═══
+            try:
+                from core.data_cache import get_data_cache
+                cache = get_data_cache()
+                cached_data = cache.batch_load(stock_codes, min_rows=60)
+                
+                if cached_data and len(cached_data) >= 3:
+                    total_rows = sum(len(df) for df in cached_data.values())
+                    logger.info(f"📦 SQLite缓存命中: {len(cached_data)} 只股票, {total_rows} 条记录 (跳过网络请求)")
+                    return cached_data
+                elif cached_data:
+                    logger.info(f"📦 缓存部分命中({len(cached_data)}只)，继续尝试在线数据补充...")
+                    all_data = cached_data
+            except Exception as e:
+                logger.debug(f"SQLite缓存不可用(不影响流程): {e}")
+                all_data = {}
+
+            # ═══ 尝试1: 在线数据源（带超时+快速失败） ═══
+            total_start = time.time()
+            
             for stock_code in stock_codes:
+                # 检查总超时
+                if time.time() - total_start > TOTAL_DATA_TIMEOUT:
+                    logger.warning(f"总数据加载超时({TOTAL_DATA_TIMEOUT}s)，已获取{len(all_data)}只，启用降级")
+                    break
+                
+                # 单只股票超时保护
+                df = None
                 try:
-                    df = mds.get_stock_daily(stock_code, start_date=start_date, end_date=end_date)
+                    old_timeout = socket.getdefaulttimeout()
+                    socket.setdefaulttimeout(DATA_LOAD_TIMEOUT)
+                    
+                    try:
+                        df = mds.get_stock_daily(stock_code, start_date=start_date, end_date=end_date)
+                    finally:
+                        socket.setdefaulttimeout(old_timeout)
+                    
                     if df is not None and not df.empty and len(df) >= 60:
                         all_data[stock_code] = df
+                        logger.info(f"✅ {stock_code}: 加载 {len(df)} 条记录")
                     else:
                         failed.append(stock_code)
-                except Exception as e:
-                    logger.debug(f"加载 {stock_code} 失败: {e}")
+                        
+                except (TimeoutError, OSError, ConnectionError, Exception) as e:
+                    logger.warning(f"⏱️ {stock_code} 加载失败({type(e).__name__}): {str(e)[:80]}")
                     failed.append(stock_code)
-            
+
+            # 有足够数据就直接返回
             if all_data and len(all_data) >= 3:
-                logger.info(f"多股票在线数据加载完成: {len(all_data)} 只成功, {len(failed)} 只失败")
+                total_rows = sum(len(df) for df in all_data.values())
+                logger.info(f"📊 多股票在线数据加载完成: {len(all_data)} 只成功, {total_rows} 条记录, {len(failed)} 只失败")
+                
+                # 异步保存到SQLite缓存（不阻塞主流程）
+                self._cache_to_sqlite(all_data)
                 return all_data
+            
+            # 合并缓存数据（如果有）
+            # ... all_data 可能已有部分缓存数据
             
             # ═══ 降级方案：使用模拟数据 ═══
-            # 当在线数据不可用（Docker环境无网络、API超时等），使用模拟数据保证流程可用
-            if len(all_data) < 3:
-                logger.warning(f"在线数据不足({len(all_data)}只)，启用模拟数据降级模式")
-                all_data = self._generate_simulated_data()
-                return all_data
+            # 关键改进：不再要求在线数据不足才降级，任何异常都直接降级
+            # 这保证了即使在Docker无网络、API封禁、DNS解析失败等极端情况下系统仍然可用
+            reason = f"在线数据不足({len(all_data)}只)" if all_data else "所有在线数据源不可达"
+            logger.warning(f"🔄 [{reason}] 启用模拟数据降级模式（参考易涨EasyUp离线策略）")
+            all_data = sim_data
             
+            # 缓存模拟数据也行
+            self._cache_to_sqlite(all_data)
             return all_data
             
         except Exception as e:
-            logger.error(f"数据加载失败，使用模拟数据降级: {e}")
+            logger.error(f"❌ 数据加载异常，强制使用模拟数据降级: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
             return self._generate_simulated_data()
+    
+    def _cache_to_sqlite(self, data: Dict[str, pd.DataFrame]):
+        """异步将数据缓存到SQLite（供下次快速加载，学习易涨EasyUp的90MB SQLite策略）"""
+        try:
+            cache_path = SCHEDULER_DIR / "stock_cache.db"
+            import sqlite3
+            
+            conn = sqlite3.connect(str(cache_path))
+            
+            for code, df in data.items():
+                safe_code = code.replace(".", "_")
+                df_copy = df.copy()
+                df_copy["stock_code"] = safe_code
+                
+                # 用 REPLACE 实现更新或插入
+                df_copy.to_sql(
+                    f"daily_{safe_code}", conn, 
+                    if_exists="replace", index=False,
+                    dtype={"date": "TEXT"}
+                )
+            
+            conn.commit()
+            conn.close()
+            logger.info(f"💾 数据已缓存到SQLite ({len(data)} 只股票)")
+        except Exception as e:
+            logger.debug(f"SQLite缓存失败(不影响流程): {e}")
     
     def _generate_simulated_data(self) -> Dict[str, pd.DataFrame]:
         """

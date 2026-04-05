@@ -907,7 +907,7 @@ class EastMoneyRealtimeSource:
                     "total": len(df),
                     "up_count": int(len(df[df["涨跌幅"] > 0])),
                     "down_count": int(len(df[df["涨跌幅"] < 0])),
-                    "limit_up": int(len(df[abs(df["涨跌幅"] - 19.9] < 1])),  # 近似涨停
+                    "limit_up": int(len(df[abs(df["涨跌幅"] - 19.9) < 1])),  # 近似涨停
                     "limit_down": int(len(df[df["涨跌幅"] < -9.9])),
                     "total_amount": df["成交额"].sum() if "成交额" in df.columns else 0,
                 }

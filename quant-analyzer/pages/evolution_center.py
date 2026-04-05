@@ -385,22 +385,91 @@ st.markdown("---")
 st.markdown("### 🔄 进化流水线")
 st.markdown("<div style='font-size:12px;color:#64748b;margin-bottom:12px;'>数据加载 → 种子因子生成 → GP 进化搜索 → IC/IR 评估 → 多因子融合 → 回测验证 → 持久化更新</div>", unsafe_allow_html=True)
 
-# 计算各阶段状态
+# 计算各阶段状态 — 从 scheduler 实时获取（修复"永远卡在阶段1"的bug）
 phase_status = {}
-if st.session_state.af_running:
-    for i, (pid, _, _, _) in enumerate(PHASES_7):
-        if i == 0:
-            phase_status[pid] = ("running", 50)
-        elif i <= 2:
-            phase_status[pid] = ("pending", 0)
+
+# 尝试从 EvolutionScheduler 获取真实运行状态
+_real_phase_map = {
+    "data_loading": "data_load",
+    "seed_generation": "seed_factors", 
+    "gp_evolution": "gp_evolve",
+    "factor_evaluation": "factor_eval",
+    "ensemble_building": "ensemble",
+    "validation": "validate",
+    "update_best": "update",
+}
+
+try:
+    if engines.get("loaded"):
+        sched_status = engines["scheduler"].get_status()
+        is_running = sched_status.get("is_running", False)
+        current_task = sched_status.get("current_task")
+        
+        if is_running and current_task:
+            # 从正在运行的任务中获取真实阶段
+            real_phase = current_task.get("current_phase", "")
+            progress = current_task.get("progress_pct", 0)
+            error_msg = current_task.get("error", "")
+            
+            # 映射到前端显示的阶段ID
+            mapped_phase = _real_phase_map.get(real_phase, "")
+            
+            for i, (pid, _, _, _) in enumerate(PHASES_7):
+                if pid == mapped_phase:
+                    phase_status[pid] = ("running", progress)
+                elif error_msg and pid == PHASES_7[i][0]:
+                    # 如果有错误且还没到当前阶段，标记失败
+                    pass
+                else:
+                    # 判断是否已完成
+                    phase_order = ["data_load", "seed_factors", "gp_evolve", "factor_eval", "ensemble", "validate", "update"]
+                    current_idx = phase_order.index(mapped_phase) if mapped_phase in phase_order else -1
+                    my_idx = phase_order.index(pid) if pid in phase_order else -1
+                    
+                    if my_idx >= 0 and current_idx >= 0 and my_idx < current_idx:
+                        phase_status[pid] = ("completed", 100)
+                    else:
+                        phase_status[pid] = ("pending", 0)
+            
+            # 如果有错误信息，在日志里显示
+            if error_msg:
+                if not any("❌" in l.get("msg","") and error_msg[:30] in l.get("msg","") 
+                          for l in st.session_state.af_logs):
+                    af_log(f"❌ 阶段异常: {error_msg}", "系统", "err")
+        elif st.session_state.af_last_result:
+            for pid, _, _, _ in PHASES_7:
+                phase_status[pid] = ("completed", 100)
         else:
+            for pid, _, _, _ in PHASES_7:
+                phase_status[pid] = ("pending", 0)
+    else:
+        # 引擎未加载时的fallback（理论上不会到这里）
+        if st.session_state.af_running:
+            for i, (pid, _, _, _) in enumerate(PHASES_7):
+                if i == 0:
+                    phase_status[pid] = ("running", 50)
+                else:
+                    phase_status[pid] = ("pending", 0)
+        elif st.session_state.af_last_result:
+            for pid, _, _, _ in PHASES_7:
+                phase_status[pid] = ("completed", 100)
+        else:
+            for pid, _, _, _ in PHASES_7:
+                phase_status[pid] = ("pending", 0)
+except Exception as e:
+    # 最终兜底：如果状态读取也出错，用session_state判断
+    if st.session_state.af_running:
+        for i, (pid, _, _, _) in enumerate(PHASES_7):
+            if i == 0:
+                phase_status[pid] = ("running", 50)
+            else:
+                phase_status[pid] = ("pending", 0)
+    elif st.session_state.af_last_result:
+        for pid, _, _, _ in PHASES_7:
+            phase_status[pid] = ("completed", 100)
+    else:
+        for pid, _, _, _ in PHASES_7:
             phase_status[pid] = ("pending", 0)
-elif st.session_state.af_last_result:
-    for pid, _, _, _ in PHASES_7:
-        phase_status[pid] = ("completed", 100)
-else:
-    for pid, _, _, _ in PHASES_7:
-        phase_status[pid] = ("pending", 0)
 
 # 渲染 7 阶段 (上4 + 下3)
 cols_top = st.columns(4)
